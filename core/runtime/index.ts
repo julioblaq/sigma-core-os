@@ -1,6 +1,7 @@
 /**
  * core/runtime/index.ts
  * Logs final task outcomes after approval resolution.
+ * Slice 2: reason field added for denial records.
  */
 
 import { randomUUID } from 'crypto';
@@ -9,15 +10,23 @@ import type { Approval } from '../policies/index.js';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS outcome_log (
-      id           TEXT PRIMARY KEY,
-          approval_id  TEXT NOT NULL,
-              task_type    TEXT NOT NULL,
-                  agent        TEXT NOT NULL,
-                      outcome      TEXT NOT NULL,
-                          resolved_by  TEXT,
-                              logged_at    TEXT NOT NULL
-                                )
-                                `);
+      id          TEXT PRIMARY KEY,
+          approval_id TEXT NOT NULL,
+              task_type   TEXT NOT NULL,
+                  agent       TEXT NOT NULL,
+                      outcome     TEXT NOT NULL,
+                          resolved_by TEXT,
+                              reason      TEXT,
+                                  logged_at   TEXT NOT NULL
+                                    )
+                                    `);
+
+// Add reason column if upgrading from slice-1 DB (idempotent)
+try {
+    db.exec('ALTER TABLE outcome_log ADD COLUMN reason TEXT');
+} catch {
+    // column already exists - safe to ignore
+}
 
 export interface OutcomeEntry {
     id: string;
@@ -26,6 +35,7 @@ export interface OutcomeEntry {
     agent: string;
     outcome: 'approved' | 'denied';
     resolvedBy?: string;
+    reason?: string;
     loggedAt: string;
 }
 
@@ -33,27 +43,42 @@ export function logOutcome(approval: Approval, taskType: string): OutcomeEntry {
     const id  = randomUUID();
     const now = new Date().toISOString();
     db.run(
-          `INSERT INTO outcome_log (id, approval_id, task_type, agent, outcome, resolved_by, logged_at)
-               VALUES (:id, :aid, :type, :agent, :outcome, :by, :at)`,
-      { ':id': id, ':aid': approval.id, ':type': taskType, ':agent': approval.agent,
-             ':outcome': approval.status, ':by': approval.resolvedBy ?? null, ':at': now },
+          `INSERT INTO outcome_log
+                 (id, approval_id, task_type, agent, outcome, resolved_by, reason, logged_at)
+                      VALUES (:id, :aid, :type, :agent, :outcome, :by, :reason, :at)`,
+      {
+              ':id':      id,
+              ':aid':     approval.id,
+              ':type':    taskType,
+              ':agent':   approval.agent,
+              ':outcome': approval.status,
+              ':by':      approval.resolvedBy ?? null,
+              ':reason':  approval.reason ?? null,
+              ':at':      now,
+      },
         );
-    console.log(`[runtime] outcome=${approval.status}  approval=${approval.id}`);
+    console.log(`[runtime] outcome=${approval.status} approval=${approval.id}`);
     return {
-          id, approvalId: approval.id, taskType, agent: approval.agent,
-          outcome: approval.status as 'approved' | 'denied',
-          resolvedBy: approval.resolvedBy, loggedAt: now,
+          id,
+          approvalId:  approval.id,
+          taskType,
+          agent:       approval.agent,
+          outcome:     approval.status as 'approved' | 'denied',
+          resolvedBy:  approval.resolvedBy,
+          reason:      approval.reason,
+          loggedAt:    now,
     };
 }
 
 export function getLog(): OutcomeEntry[] {
     return db.all('SELECT * FROM outcome_log ORDER BY logged_at DESC').map(r => ({
-          id:         r['id'] as string,
-          approvalId: r['approval_id'] as string,
-          taskType:   r['task_type'] as string,
-          agent:      r['agent'] as string,
-          outcome:    r['outcome'] as 'approved' | 'denied',
-          resolvedBy: r['resolved_by'] as string | undefined,
-          loggedAt:   r['logged_at'] as string,
+          id:          r['id'] as string,
+          approvalId:  r['approval_id'] as string,
+          taskType:    r['task_type'] as string,
+          agent:       r['agent'] as string,
+          outcome:     r['outcome'] as 'approved' | 'denied',
+          resolvedBy:  r['resolved_by'] as string | undefined,
+          reason:      r['reason'] as string | undefined,
+          loggedAt:    r['logged_at'] as string,
     }));
 }
