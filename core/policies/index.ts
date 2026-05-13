@@ -1,95 +1,100 @@
 /**
  * core/policies/index.ts
-   * Sigma Core OS — Policy & Approval Gate Engine
- *
-   * Enforces human approval for sensitive or irreversible actions.
-   * All agents MUST check policies before executing gated actions.
-   */
+ * Approval queue backed by SQLite via better-sqlite3.
+ * One table: approvals(id, agent, action, description, payload_json, status, created_at, resolved_at, resolved_by)
+ */
 
-export type ActionCategory =
-  | 'trade_order'
-  | 'money_movement'
-  | 'file_delete'
-  | 'file_overwrite_production'
-  | 'deploy_production'
-  | 'publish_public'
-  | 'send_message'
-  | 'custom';
+import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
+import path from 'path';
 
-export interface ApprovalRequest {
+export type ApprovalStatus = 'pending' | 'approved' | 'denied';
+
+export interface Approval {
     id: string;
-  agentName: string;
-  actionCategory: ActionCategory;
-  description: string;
-  payload: Record<string, unknown>;
-  requestedAt: Date;
-  status: 'pending' | 'approved' | 'denied';
-  resolvedAt?: Date;
-  resolvedBy?: string;
+    agent: string;
+    action: string;
+    description: string;
+    payload: Record<string, unknown>;
+    status: ApprovalStatus;
+    createdAt: string;
+    resolvedAt?: string;
+    resolvedBy?: string;
 }
 
-// In-memory approval queue (replace with persistent store in production)
-const approvalQueue: Map<string, ApprovalRequest> = new Map();
+const DB_PATH = path.resolve(process.env.DB_PATH ?? './sigma.db');
+const db = new Database(DB_PATH);
 
-// Actions that ALWAYS require human approval
-const GATED_ACTIONS: ActionCategory[] = [
-  'trade_order',
-  'money_movement',
-  'file_delete',
-  'file_overwrite_production',
-  'deploy_production',
-  'publish_public',
-  'send_message',
-];
+db.exec(`
+  CREATE TABLE IF NOT EXISTS approvals (
+      id          TEXT PRIMARY KEY,
+          agent       TEXT NOT NULL,
+              action      TEXT NOT NULL,
+                  description TEXT NOT NULL,
+                      payload     TEXT NOT NULL,
+                          status      TEXT NOT NULL DEFAULT 'pending',
+                              created_at  TEXT NOT NULL,
+                                  resolved_at TEXT,
+                                      resolved_by TEXT
+                                        )
+                                        `);
 
-export function requiresApproval(category: ActionCategory): boolean {
-    return GATED_ACTIONS.includes(category);
+const insert = db.prepare(`
+  INSERT INTO approvals (id, agent, action, description, payload, status, created_at)
+    VALUES (@id, @agent, @action, @description, @payload, 'pending', @created_at)
+    `);
+
+const resolve = db.prepare(`
+  UPDATE approvals
+    SET status = @status, resolved_at = @resolved_at, resolved_by = @resolved_by
+      WHERE id = @id AND status = 'pending'
+      `);
+
+const getById  = db.prepare('SELECT * FROM approvals WHERE id = ?');
+const getPending = db.prepare("SELECT * FROM approvals WHERE status = 'pending'");
+
+function row(r: Record<string, unknown>): Approval {
+    return {
+          id:          r.id as string,
+          agent:       r.agent as string,
+          action:      r.action as string,
+          description: r.description as string,
+          payload:     JSON.parse(r.payload as string),
+          status:      r.status as ApprovalStatus,
+          createdAt:   r.created_at as string,
+          resolvedAt:  r.resolved_at as string | undefined,
+          resolvedBy:  r.resolved_by as string | undefined,
+    };
 }
 
 export function requestApproval(
-  agentName: string,
-  actionCategory: ActionCategory,
-  description: string,
-  payload: Record<string, unknown>
-): ApprovalRequest {
-    const request: ApprovalRequest = {
-    id: `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    agentName,
-    actionCategory,
-    description,
-    payload,
-    requestedAt: new Date(),
-    status: 'pending',
-};
-
-  approvalQueue.set(request.id, request);
-  console.log(`[policies] Approval requested: ${request.id} by ${agentName} for ${actionCategory}`);
-
-  // TODO: Emit event to dashboard / notification system
-  return request;
-                                   }
-
-export function resolveApproval(
-  requestId: string,
-  approved: boolean,
-  resolvedBy: string
-): ApprovalRequest | null {
-  const request = approvalQueue.get(requestId);
-  if (!request) return null;
-
-  request.status = approved ? 'approved' : 'denied';
-  request.resolvedAt = new Date();
-  request.resolvedBy = resolvedBy;
-
-  console.log(`[policies] Approval ${request.status}: ${requestId} by ${resolvedBy}`);
-  return request;
-                                    }
-
-export function getPendingApprovals(): ApprovalRequest[] {
-  return Array.from(approvalQueue.values()).filter((r) => r.status === 'pending');
+    agent: string,
+    action: string,
+    description: string,
+    payload: Record<string, unknown>,
+  ): Approval {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    insert.run({ id, agent, action, description, payload: JSON.stringify(payload), created_at: now });
+    console.log(`[policies] approval queued  id=${id}  action=${action}`);
+    return row(getById.get(id) as Record<string, unknown>);
 }
 
-export function isApproved(requestId: string): boolean {
-  const request = approvalQueue.get(requestId);
-  return request?.status === 'approved' ?? false;
+export function resolveApproval(id: string, approved: boolean, resolvedBy: string): Approval | null {
+    const existing = getById.get(id) as Record<string, unknown> | undefined;
+    if (!existing || existing.status !== 'pending') return null;
+    const status: ApprovalStatus = approved ? 'approved' : 'denied';
+    resolve.run({ id, status, resolved_at: new Date().toISOString(), resolved_by: resolvedBy });
+    const updated = row(getById.get(id) as Record<string, unknown>);
+    console.log(`[policies] approval ${status}  id=${id}  by=${resolvedBy}`);
+    return updated;
+}
+
+export function listPending(): Approval[] {
+    return (getPending.all() as Record<string, unknown>[]).map(row);
+}
+
+export function getApproval(id: string): Approval | null {
+    const r = getById.get(id) as Record<string, unknown> | undefined;
+    return r ? row(r) : null;
 }
