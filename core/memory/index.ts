@@ -1,72 +1,47 @@
 /**
  * core/memory/index.ts
-  * Sigma Core OS — Shared Memory Store
-   *
-    * Provides namespaced key-value storage for agents.
-     * Short-term: in-memory Map (dev). Long-term: Redis + SQLite (production).
-      */
+ * Namespaced key-value store backed by SQLite.
+ * Stub — rewrite in slice 2.
+ */
 
-      export interface MemoryEntry {
-        namespace: string;
-          key: string;
-            value: unknown;
-              writtenBy: string;
-                writtenAt: Date;
-                  ttl?: number; // seconds, optional
-                  }
+import Database from 'better-sqlite3';
+import path from 'path';
 
-                  // In-memory store for development
-                  const store: Map<string, MemoryEntry> = new Map();
+const DB_PATH = path.resolve(process.env.DB_PATH ?? './sigma.db');
+const db = new Database(DB_PATH);
 
-                  function buildKey(namespace: string, key: string): string {
-                    return `${namespace}:${key}`;
-                    }
+db.exec(`
+  CREATE TABLE IF NOT EXISTS memory (
+      namespace TEXT NOT NULL,
+          key       TEXT NOT NULL,
+              value     TEXT NOT NULL,
+                  written_by TEXT NOT NULL,
+                      written_at TEXT NOT NULL,
+                          PRIMARY KEY (namespace, key)
+                            )
+                            `);
 
-                    export function memoryWrite(
-                      namespace: string,
-                        key: string,
-                          value: unknown,
-                            writtenBy: string,
-                              ttl?: number
-                              ): void {
-                                const entry: MemoryEntry = {
-                                    namespace,
-                                        key,
-                                            value,
-                                                writtenBy,
-                                                    writtenAt: new Date(),
-                                                        ttl,
-                                                          };
-                                                            store.set(buildKey(namespace, key), entry);
-                                                              console.log(`[memory] Written: ${namespace}:${key} by ${writtenBy}`);
-                                                              }
+const upsert = db.prepare(`
+  INSERT INTO memory (namespace, key, value, written_by, written_at)
+    VALUES (@namespace, @key, @value, @written_by, @written_at)
+      ON CONFLICT(namespace, key) DO UPDATE SET
+          value = excluded.value,
+              written_by = excluded.written_by,
+                  written_at = excluded.written_at
+                  `);
 
-                                                              export function memoryRead(namespace: string, key: string): unknown | null {
-                                                                const entry = store.get(buildKey(namespace, key));
-                                                                  if (!entry) return null;
+const read  = db.prepare('SELECT value FROM memory WHERE namespace = ? AND key = ?');
+const delKV = db.prepare('DELETE FROM memory WHERE namespace = ? AND key = ?');
 
-                                                                    // Check TTL expiry
-                                                                      if (entry.ttl) {
-                                                                          const ageSeconds = (Date.now() - entry.writtenAt.getTime()) / 1000;
-                                                                              if (ageSeconds > entry.ttl) {
-                                                                                    store.delete(buildKey(namespace, key));
-                                                                                          return null;
-                                                                                              }
-                                                                                                }
+export function memSet(namespace: string, key: string, value: unknown, writtenBy: string): void {
+   upsert.run({ namespace, key, value: JSON.stringify(value), written_by: writtenBy, written_at: new Date().toISOString() });
+}
 
-                                                                                                  return entry.value;
-                                                                                                  }
+export function memGet(namespace: string, key: string): unknown | null {
+   const row = read.get(namespace, key) as { value: string } | undefined;
+   return row ? JSON.parse(row.value) : null;
+}
 
-                                                                                                  export function memoryDelete(namespace: string, key: string, deletedBy: string): boolean {
-                                                                                                    const exists = store.has(buildKey(namespace, key));
-                                                                                                      if (exists) {
-                                                                                                          store.delete(buildKey(namespace, key));
-                                                                                                              console.log(`[memory] Deleted: ${namespace}:${key} by ${deletedBy}`);
-                                                                                                                }
-                                                                                                                  return exists;
-                                                                                                                  }
-                                                                                                                  
-                                                                                                                  export function memoryListNamespace(namespace: string): MemoryEntry[] {
-                                                                                                                    return Array.from(store.values()).filter((e) => e.namespace === namespace);
-                                                                                                                    }
-                                                                                                                    
+export function memDel(namespace: string, key: string): void {
+   delKV.run(namespace, key);
+}
