@@ -1,20 +1,21 @@
 {
-      "name": "sigma-core-os",
-      "version": "0.1.0",
-      "description": "Agentic OS for Sigma Futures",
-      "type": "module",
-      "scripts": {
-              "dev":      "tsx watch apps/api/server.ts",
-              "start":    "tsx apps/api/server.ts",
-              "typecheck": "tsc --noEmit"
-      },
-      "dependencies": {
-              "fastify": "^4.26.2",
-              "node-sqlite3-wasm": "^0.8.35"
-      },
-      "devDependencies": {
-              "@types/node": "^20.11.24",
-              "tsx": "^4.7.1",
-              "typescript": "^5.4.2"
-      }
+        "name": "sigma-core-os",
+        "version": "0.2.0",
+        "description": "Agentic OS for Sigma Futures",
+        "type": "module",
+        "scripts": {
+                  "dev":       "tsx watch apps/api/server.ts",
+                  "start":     "tsx apps/api/server.ts",
+                  "test":      "node --import tsx/esm --test tests/**/*.test.ts",
+                  "typecheck": "tsc --noEmit"
+        },
+        "dependencies": {
+                  "fastify":           "^4.26.2",
+                  "node-sqlite3-wasm": "^0.8.35"
+        },
+        "devDependencies": {
+                  "@types/node": "^20.11.24",
+                  "tsx":        "^4.7.1",
+                  "typescript": "^5.4.2"
+        }
 }
