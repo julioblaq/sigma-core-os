@@ -6,9 +6,13 @@
 // All risk calculations are deterministic - no LLM involved.
 // Strategy feeds the Risk Engine: allowedInstruments, maxPositionSize,
 // maxDailyDrawdown, defaultRR are applied when strategyId is passed.
+//
+// Uses RUN suffix on all workspace names to prevent SLUG_TAKEN errors
+// when tests run against a persistent SQLite DB (sigma.db).
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { randomBytes } from 'crypto';
 
 import {
   createStrategy,
@@ -24,12 +28,11 @@ import {
 import { createWorkspace } from '../core/operators/index.js';
 import { generateTradePlan } from '../core/risk/index.js';
 
-// ---------------------------------------------------------------------------
-// Helper: create a workspace for each test group
-// ---------------------------------------------------------------------------
+// Unique suffix per test run so slugs never collide with prior runs in sigma.db
+const RUN = randomBytes(4).toString('hex');
 
 function makeWorkspace(name: string): string {
-  const { workspace } = createWorkspace(name, 'test-user');
+  const { workspace } = createWorkspace(`${name}-${RUN}`, 'test-user');
   return workspace.id;
 }
 
@@ -183,7 +186,7 @@ describe('updateStrategy', () => {
     assert.equal(updated.slug, 'updated-name');
     assert.equal(updated.maxDailyDrawdown, 1.5);
     assert.equal(updated.defaultRR, 3.0);
-    assert.ok(updated.updatedAt > s.updatedAt || updated.updatedAt === s.updatedAt, 'updatedAt should be set');
+    assert.ok(updated.updatedAt >= s.updatedAt, 'updatedAt should be set');
   });
 
   it('cannot update archived strategy', () => {
