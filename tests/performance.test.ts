@@ -87,7 +87,7 @@ describe('getPerformanceSummary', () => {
     // 10 closed trades total
     assert.equal(s.totalTrades, 10, 'totalTrades=10');
     assert.equal(s.wins, 6, 'wins=6');
-    assert.equal(s.losses, 4, 'losses=4 (1 ES loss, 1 ES scratch... wait: 1 loss ES + 2 loss MES = 3 losses... let me count: ES: 2win+1loss+1win+1scratch=5, MES: 2win+2loss+1win=5, total: wins=3+3=6, losses=1+2=3, scratches=1+0=1... hmm recounting');
+    assert.equal(s.losses, 3, 'losses=4 (1 ES loss, 1 ES scratch... wait: 1 loss ES + 2 loss MES = 3 losses... let me count: ES: 2win+1loss+1win+1scratch=5, MES: 2win+2loss+1win=5, total: wins=3+3=6, losses=1+2=3, scratches=1+0=1... hmm recounting');
     // Actually: ES=(win,win,loss,win,scratch)=3wins,1loss,1scratch; MES=(win,win,loss,loss,win)=3wins,2losses,0scratches
     // total: wins=6, losses=3, scratches=1, total=10
     assert.equal(s.scratches, 1, 'scratches=1');
