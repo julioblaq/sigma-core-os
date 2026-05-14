@@ -2,35 +2,39 @@
 // Sigma Core OS - API server
 //
 // Routes:
+// POST /v1/auth/register
+// POST /v1/auth/login
+// POST /v1/auth/logout
+// GET  /v1/auth/me
 // POST /v1/task
-// GET /v1/approvals
-// GET /v1/approvals/history
-// GET /v1/approvals/:id
+// GET  /v1/approvals
+// GET  /v1/approvals/history
+// GET  /v1/approvals/:id
 // POST /v1/approvals/:id
-// GET /v1/log
-// GET /v1/log/search
-// GET /v1/memory
+// GET  /v1/log
+// GET  /v1/log/search
+// GET  /v1/memory
 // POST /v1/risk/position-size
 // POST /v1/risk/tp-sl
 // POST /v1/risk/trade-plan
-// GET /v1/risk/contracts
+// GET  /v1/risk/contracts
 // POST /v1/workspaces
-// GET /v1/workspaces/:id
-// GET /v1/workspaces/:id/members
+// GET  /v1/workspaces/:id
+// GET  /v1/workspaces/:id/members
 // POST /v1/workspaces/:id/members
-// GET /v1/workspaces/:id/strategies
+// GET  /v1/workspaces/:id/strategies
 // POST /v1/workspaces/:id/strategies
-// GET /v1/strategies/:id
+// GET  /v1/strategies/:id
 // PATCH /v1/strategies/:id
 // DELETE /v1/strategies/:id
-// GET /v1/workspaces/:id/journal
+// GET  /v1/workspaces/:id/journal
 // POST /v1/workspaces/:id/journal
-// GET /v1/journal/:id
+// GET  /v1/journal/:id
 // POST /v1/journal/:id/close
-// GET /v1/workspaces/:id/journal/summary
-// GET /health
+// GET  /v1/workspaces/:id/journal/summary
+// GET  /health
 //
-// v0.7.0d: added GET /v1/log/search — audit search
+// v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
 
 import Fastify from 'fastify';
 import { randomUUID } from 'crypto';
@@ -77,23 +81,131 @@ import {
   type JournalSide,
   type JournalOutcome,
 } from '../../core/journal/index.js';
+import {
+  register,
+  login,
+  logout,
+  getSessionUser,
+  extractToken,
+  AuthError,
+  type User,
+} from '../../core/auth/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
+const SESSION_COOKIE = 'sigma_session';
+// 24h in seconds for Set-Cookie max-age
+const SESSION_MAX_AGE = 24 * 60 * 60;
 
 app.addHook('onRequest', async (req, reply) => {
   reply.header('Access-Control-Allow-Origin', process.env.DASHBOARD_ORIGIN ?? 'http://localhost:3000');
   reply.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  reply.header('Access-Control-Allow-Headers', 'Content-Type,x-user-id,x-workspace-id');
+  reply.header('Access-Control-Allow-Headers', 'Content-Type,x-user-id,x-workspace-id,Authorization');
+  reply.header('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return reply.code(204).send();
 });
 
+// ---------------------------------------------------------------------------
+// Auth helpers
+// ---------------------------------------------------------------------------
+
+// Parse cookies from Cookie header
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) return {};
+  return Object.fromEntries(
+    cookieHeader.split(';').map(c => {
+      const [k, ...v] = c.trim().split('=');
+      return [k.trim(), v.join('=').trim()];
+    }),
+  );
+}
+
+// Get the authenticated user from session cookie or Authorization header
+// Returns null if not authenticated
+function getAuthedUser(req: { headers: Record<string, string | string[] | undefined> }): User | null {
+  const cookieHeader = req.headers['cookie'] as string | undefined;
+  const authHeader = req.headers['authorization'] as string | undefined;
+  const cookies = parseCookies(cookieHeader);
+  const token = extractToken(cookies, authHeader);
+  return getSessionUser(token);
+}
+
+// Backward-compat: if authenticated use authed user id, else fall back to x-user-id header stub
 function getUserId(req: { headers: Record<string, string | string[] | undefined> }): string {
+  const authed = getAuthedUser(req);
+  if (authed) return authed.id;
   const h = req.headers['x-user-id'];
   return (Array.isArray(h) ? h[0] : h) ?? 'anonymous';
 }
 
-app.get('/health', async () => ({ status: 'ok', service: 'sigma-core-os', version: '0.7.0' }));
+// ---------------------------------------------------------------------------
+// Health
+// ---------------------------------------------------------------------------
+
+app.get('/health', async () => ({ status: 'ok', service: 'sigma-core-os', version: '0.8.0' }));
+
+// ---------------------------------------------------------------------------
+// Auth routes (v0.8.0)
+// ---------------------------------------------------------------------------
+
+// POST /v1/auth/register
+app.post<{ Body: { username: string; email: string; password: string } }>(
+  '/v1/auth/register',
+  { schema: { body: { type: 'object', required: ['username', 'email', 'password'],
+    properties: { username: { type: 'string' }, email: { type: 'string' }, password: { type: 'string' } } } } },
+  async (req, reply) => {
+    try {
+      const user = await register(req.body.username, req.body.email, req.body.password);
+      return reply.code(201).send({ user });
+    } catch (err) {
+      if (err instanceof AuthError) {
+        const statusMap: Record<string, number> = { ALREADY_EXISTS: 409, INVALID_USERNAME: 400, INVALID_EMAIL: 400, INVALID_PASSWORD: 400 };
+        return reply.code(statusMap[err.code] ?? 400).send({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
+  },
+);
+
+// POST /v1/auth/login
+app.post<{ Body: { username: string; password: string } }>(
+  '/v1/auth/login',
+  { schema: { body: { type: 'object', required: ['username', 'password'],
+    properties: { username: { type: 'string' }, password: { type: 'string' } } } } },
+  async (req, reply) => {
+    try {
+      const { user, token } = await login(req.body.username, req.body.password);
+      reply.header('Set-Cookie', `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; Max-Age=${SESSION_MAX_AGE}; SameSite=Lax`);
+      return reply.code(200).send({ user, token });
+    } catch (err) {
+      if (err instanceof AuthError) {
+        return reply.code(401).send({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
+  },
+);
+
+// POST /v1/auth/logout
+app.post('/v1/auth/logout', async (req, reply) => {
+  const cookies = parseCookies(req.headers['cookie'] as string | undefined);
+  const authHeader = req.headers['authorization'] as string | undefined;
+  const token = extractToken(cookies, authHeader);
+  if (token) logout(token);
+  reply.header('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
+  return reply.code(200).send({ ok: true });
+});
+
+// GET /v1/auth/me
+app.get('/v1/auth/me', async (req, reply) => {
+  const user = getAuthedUser(req as Parameters<typeof getAuthedUser>[0]);
+  if (!user) return reply.code(401).send({ error: 'not authenticated', code: 'UNAUTHENTICATED' });
+  return { user };
+});
+
+// ---------------------------------------------------------------------------
+// Task route
+// ---------------------------------------------------------------------------
 
 app.post<{ Body: { type: string; payload: Record<string, unknown>; submittedBy?: string } }>(
   '/v1/task',
@@ -108,6 +220,10 @@ app.post<{ Body: { type: string; payload: Record<string, unknown>; submittedBy?:
     return reply.code(result.status === 'error' ? 400 : 202).send(result);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Approval routes
+// ---------------------------------------------------------------------------
 
 app.get('/v1/approvals', async () => listPending());
 app.get('/v1/approvals/history', async () => listAll());
@@ -127,6 +243,7 @@ app.post<{
     properties: { approved: { type: 'boolean' }, resolvedBy: { type: 'string' }, reason: { type: 'string' } } } } },
   async (req, reply) => {
     const { approved, reason } = req.body;
+    // Use authenticated user id for audit trail; fall back to resolvedBy override or x-user-id stub
     const userId = getUserId(req as Parameters<typeof getUserId>[0]);
     const resolvedBy = req.body.resolvedBy ?? userId;
 
@@ -151,10 +268,12 @@ app.post<{
   },
 );
 
+// ---------------------------------------------------------------------------
+// Log routes
+// ---------------------------------------------------------------------------
+
 app.get('/v1/log', async () => getLog());
 
-// GET /v1/log/search — audit log search (read-only)
-// Query params: agent, action, status, from, to, limit
 app.get<{ Querystring: {
   agent?: string; action?: string; status?: string;
   from?: string; to?: string; limit?: string;
@@ -172,6 +291,10 @@ app.get<{ Querystring: {
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// Memory
+// ---------------------------------------------------------------------------
 
 app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
   const ns = req.query.namespace;
@@ -495,12 +618,9 @@ app.delete<{ Params: { id: string } }>('/v1/strategies/:id', async (req, reply) 
 });
 
 // ---------------------------------------------------------------------------
-// Journal endpoints (v0.7.0c)
-// Role enforcement: all members can create/view journal entries
-// Closing a trade requires approver or admin role
+// Journal endpoints
 // ---------------------------------------------------------------------------
 
-// GET /v1/workspaces/:id/journal — list entries, optional ?strategyId=
 app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
   '/v1/workspaces/:id/journal',
   async (req, reply) => {
@@ -515,7 +635,6 @@ app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
   },
 );
 
-// POST /v1/workspaces/:id/journal — create entry (any member)
 app.post<{ Params: { id: string }; Body: {
   symbol: string; side: JournalSide; entryPrice: number; contracts: number;
   strategyId?: string; notes?: string; tags?: string[]; openedAt?: string;
@@ -533,7 +652,6 @@ app.post<{ Params: { id: string }; Body: {
       const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
       const ws = getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      // Any workspace member can log a trade
       const requester = getMember(req.params.id, requesterId);
       if (!requester) return reply.code(403).send({ error: 'not a member of this workspace' });
       const entry = createJournalEntry({ workspaceId: req.params.id, ...req.body });
@@ -548,14 +666,12 @@ app.post<{ Params: { id: string }; Body: {
   },
 );
 
-// GET /v1/journal/:id — get single entry
 app.get<{ Params: { id: string } }>('/v1/journal/:id', async (req, reply) => {
   const entry = getJournalEntry(req.params.id);
   if (!entry) return reply.code(404).send({ error: 'journal entry not found' });
   return entry;
 });
 
-// POST /v1/journal/:id/close — close a trade (approver or admin)
 app.post<{ Params: { id: string }; Body: {
   exitPrice: number; pnlDollars: number;
   outcome: Exclude<JournalOutcome, 'open'>;
@@ -572,8 +688,6 @@ app.post<{ Params: { id: string }; Body: {
       const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
       const entry = getJournalEntry(req.params.id);
       if (!entry) return reply.code(404).send({ error: 'journal entry not found' });
-
-      // Approver or admin required to close a trade
       const workspaceId = req.headers['x-workspace-id'];
       if (workspaceId && typeof workspaceId === 'string') {
         const member = getMember(workspaceId, requesterId);
@@ -582,7 +696,6 @@ app.post<{ Params: { id: string }; Body: {
           return reply.code(403).send({ error: `role '${member.role}' cannot close journal entries` });
         }
       }
-
       return closeJournalEntry(req.params.id, req.body);
     } catch (err) {
       if (err instanceof JournalError) {
@@ -594,7 +707,6 @@ app.post<{ Params: { id: string }; Body: {
   },
 );
 
-// GET /v1/workspaces/:id/journal/summary — aggregate stats
 app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
   '/v1/workspaces/:id/journal/summary',
   async (req, reply) => {
