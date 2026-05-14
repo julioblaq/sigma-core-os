@@ -8,6 +8,7 @@
 // GET /v1/approvals/:id
 // POST /v1/approvals/:id
 // GET /v1/log
+// GET /v1/log/search
 // GET /v1/memory
 // POST /v1/risk/position-size
 // POST /v1/risk/tp-sl
@@ -29,13 +30,13 @@
 // GET /v1/workspaces/:id/journal/summary
 // GET /health
 //
-// v0.7.0c: added /v1/journal/* endpoints, trade journal
+// v0.7.0d: added GET /v1/log/search — audit search
 
 import Fastify from 'fastify';
 import { randomUUID } from 'crypto';
 import { route } from '../../core/router/index.js';
 import { listPending, getApproval, resolveApproval, listAll, requestApproval } from '../../core/policies/index.js';
-import { logOutcome, getLog } from '../../core/runtime/index.js';
+import { logOutcome, getLog, searchLog } from '../../core/runtime/index.js';
 import { memList } from '../../core/memory/index.js';
 import {
   calcPositionSize,
@@ -151,6 +152,26 @@ app.post<{
 );
 
 app.get('/v1/log', async () => getLog());
+
+// GET /v1/log/search — audit log search (read-only)
+// Query params: agent, action, status, from, to, limit
+app.get<{ Querystring: {
+  agent?: string; action?: string; status?: string;
+  from?: string; to?: string; limit?: string;
+} }>(
+  '/v1/log/search',
+  async (req) => {
+    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10), 500) : 100;
+    return searchLog({
+      agent: req.query.agent,
+      action: req.query.action,
+      status: req.query.status as 'approved' | 'denied' | undefined,
+      from: req.query.from,
+      to: req.query.to,
+      limit,
+    });
+  },
+);
 
 app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
   const ns = req.query.namespace;
