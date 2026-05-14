@@ -134,10 +134,11 @@ describe('workspace access with authenticated user', () => {
   it('authenticated user id used as workspace creator', async () => {
     // Register a real user
     const user = await register(uid('wsowner'), `${uid('wsowner')}@example.com`, 'password123');
-    // Create workspace with the real user id
-    const ws = createWorkspace(uid('My Auth WS'), user.id);
+    assert.ok(user.id, 'user.id must be defined');
+    // createWorkspace returns { workspace, member } — destructure correctly
+    const { workspace } = createWorkspace(uid('My Auth WS'), user.id);
     // Verify the user is the admin member
-    const member = getMember(ws.id, user.id);
+    const member = getMember(workspace.id, user.id);
     assert.ok(member, 'user is workspace member');
     assert.equal(member!.role, 'admin');
   });
