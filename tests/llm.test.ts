@@ -323,18 +323,28 @@ describe('generateResponse - full chain exhaustion', () => {
 
 describe('generateResponse - timeout failover', () => {
   it('fails over to secondary when primary times out', async () => {
-    // Set primary to a very short timeout via env override
+    // Set primary to a very short timeout
     process.env.LLM_GPT55_TIMEOUT_MS = '50';
 
     const callLog: string[] = [];
-    mockFetch(async (url) => {
+    mockFetch(async (url, init) => {
       if (url.includes('test-openai')) {
         callLog.push('primary-hang');
-        // Simulate timeout: wait longer than LLM_GPT55_TIMEOUT_MS
-        await new Promise(r => setTimeout(r, 200));
-        return new Response(JSON.stringify(makeOkResponse()), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
+        // Respect the AbortSignal - mocked fetch must check signal manually
+        return new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            resolve(new Response(JSON.stringify(makeOkResponse()), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }));
+          }, 200);
+          // If signal fires before 200ms, abort and reject
+          init?.signal?.addEventListener('abort', () => {
+            clearTimeout(timer);
+            const err = new Error('The operation was aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
         });
       }
       callLog.push('secondary-ok');
@@ -350,7 +360,6 @@ describe('generateResponse - timeout failover', () => {
       assert.equal(res.providerIndex, 1);
       assert.ok(callLog.includes('secondary-ok'));
     } finally {
-      // Restore
       delete process.env.LLM_GPT55_TIMEOUT_MS;
     }
   });
