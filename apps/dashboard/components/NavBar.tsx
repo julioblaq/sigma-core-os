@@ -5,10 +5,11 @@ import { useEffect, useState } from 'react';
 
 const LINKS = [
   { href: '/approvals', label: 'Approvals' },
-  { href: '/log',       label: 'Runtime Log' },
-  { href: '/memory',    label: 'Memory' },
-  { href: '/activity',  label: 'Activity' },
-  { href: '/risk',      label: 'Risk' },
+  { href: '/log', label: 'Runtime Log' },
+  { href: '/memory', label: 'Memory' },
+  { href: '/activity', label: 'Activity' },
+  { href: '/risk', label: 'Risk' },
+  { href: '/workspace', label: 'Workspace' },
 ];
 
 export default function NavBar() {
