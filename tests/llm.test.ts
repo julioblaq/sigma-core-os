@@ -1,18 +1,23 @@
 // tests/llm.test.ts
-// Slice 2c: core/llm tests - mocks globalThis.fetch so no real API calls are made.
+// Slice 2c: core/llm tests - mocks globalThis.fetch, no real API calls.
+// Config is read lazily per-call so env vars set here are always picked up.
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-// We import the module under test AFTER setting env vars so loadConfig() picks them up.
-// Because ESM modules are cached, we set env vars before the first import.
-process.env.LLM_BASE_URL    = 'https://test-litellm.example.com/v1';
-process.env.LLM_MODEL       = 'gpt-test';
-process.env.LLM_API_KEY     = 'sk-test-key';
-process.env.LLM_TIMEOUT_MS  = '5000';
-process.env.LLM_MAX_RETRIES = '1';
-
 import { generateResponse, getLLMConfig } from '../core/llm/index.js';
+
+// -------------------------------------------------------------------------
+// Test env config - set once before all tests, read lazily by core/llm
+// -------------------------------------------------------------------------
+
+before(() => {
+  process.env.LLM_BASE_URL    = 'https://test-litellm.example.com/v1';
+  process.env.LLM_MODEL       = 'gpt-test';
+  process.env.LLM_API_KEY     = 'sk-test-key';
+  process.env.LLM_TIMEOUT_MS  = '5000';
+  process.env.LLM_MAX_RETRIES = '1';
+});
 
 // -------------------------------------------------------------------------
 // Fetch mock helpers
@@ -20,38 +25,32 @@ import { generateResponse, getLLMConfig } from '../core/llm/index.js';
 
 type FetchMock = (url: string, init?: RequestInit) => Promise<Response>;
 
-let originalFetch: typeof fetch;
+let savedFetch: typeof fetch;
 
 function mockFetch(impl: FetchMock) {
   (globalThis as Record<string, unknown>).fetch = impl;
 }
 
 function makeFetchOk(body: object): FetchMock {
-  return async (_url, _init) =>
+  return async () =>
     new Response(JSON.stringify(body), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
 }
 
-function makeFetchError(status: number, message: string): FetchMock {
-  return async (_url, _init) =>
-    new Response(message, { status });
+function makeFetchStatus(status: number, body = ''): FetchMock {
+  return async () => new Response(body, { status });
 }
+
+beforeEach(() => { savedFetch = globalThis.fetch; });
+afterEach(() => { (globalThis as Record<string, unknown>).fetch = savedFetch; });
 
 // -------------------------------------------------------------------------
 // Tests
 // -------------------------------------------------------------------------
 
 describe('core/llm', () => {
-
-  beforeEach(() => {
-    originalFetch = globalThis.fetch;
-  });
-
-  afterEach(() => {
-    (globalThis as Record<string, unknown>).fetch = originalFetch;
-  });
 
   // -------------------------------------------------------------------------
   // getLLMConfig
@@ -109,7 +108,7 @@ describe('core/llm', () => {
 
       await generateResponse({
         systemPrompt: 'System.',
-        userPrompt: 'User.',
+        userPrompt:   'User.',
         context: { symbol: 'ES', qty: 1 },
       });
 
@@ -154,7 +153,7 @@ describe('core/llm', () => {
   // -------------------------------------------------------------------------
   describe('generateResponse - errors', () => {
     it('throws on non-retryable 400 error', async () => {
-      mockFetch(makeFetchError(400, 'Bad Request'));
+      mockFetch(makeFetchStatus(400, 'Bad Request'));
 
       await assert.rejects(
         () => generateResponse({ systemPrompt: 'sys', userPrompt: 'user' }),
@@ -166,12 +165,12 @@ describe('core/llm', () => {
     });
 
     it('throws on 401 unauthorized', async () => {
-      mockFetch(makeFetchError(401, 'Unauthorized'));
+      mockFetch(makeFetchStatus(401, 'Unauthorized'));
 
       await assert.rejects(
         () => generateResponse({ systemPrompt: 'sys', userPrompt: 'user' }),
         (err: Error) => {
-          assert.ok(err.message.includes('401'));
+          assert.ok(err.message.includes('401'), 'error should mention status 401');
           return true;
         },
       );
@@ -179,7 +178,7 @@ describe('core/llm', () => {
 
     it('retries on 429 and eventually throws', async () => {
       let callCount = 0;
-      mockFetch(async (_url, _init) => {
+      mockFetch(async () => {
         callCount++;
         return new Response('rate limited', { status: 429 });
       });
@@ -188,13 +187,13 @@ describe('core/llm', () => {
         () => generateResponse({ systemPrompt: 'sys', userPrompt: 'user' }),
       );
 
-      // With maxRetries=1: initial attempt + 1 retry = 2 calls
+      // LLM_MAX_RETRIES=1: initial attempt + 1 retry = 2 calls
       assert.equal(callCount, 2, `expected 2 calls (1 + 1 retry), got ${callCount}`);
     });
 
     it('retries on 503 and succeeds on second attempt', async () => {
       let callCount = 0;
-      mockFetch(async (_url, _init) => {
+      mockFetch(async () => {
         callCount++;
         if (callCount === 1) {
           return new Response('service unavailable', { status: 503 });
@@ -208,7 +207,7 @@ describe('core/llm', () => {
 
       const res = await generateResponse({ systemPrompt: 'sys', userPrompt: 'user' });
       assert.equal(res.content, 'recovered');
-      assert.equal(callCount, 2, `expected 2 calls (1 fail + 1 retry), got ${callCount}`);
+      assert.equal(callCount, 2, `expected 2 calls (fail + retry), got ${callCount}`);
     });
   });
 
