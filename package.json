@@ -1,13 +1,13 @@
 {
   "name": "sigma-core-os",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "description": "Agentic OS for Sigma Futures",
   "type": "module",
   "scripts": {
     "dev": "tsx watch apps/api/server.ts",
     "start": "tsx apps/api/server.ts",
     "dashboard": "cd apps/dashboard && npm run dev",
-    "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts tests/llm.test.ts tests/sigma-dev.test.ts tests/sandbox.test.ts tests/broker.test.ts tests/risk.test.ts tests/operators.test.ts tests/strategies.test.ts tests/journal.test.ts tests/audit-search.test.ts",
+    "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts tests/llm.test.ts tests/sigma-dev.test.ts tests/sandbox.test.ts tests/broker.test.ts tests/risk.test.ts tests/operators.test.ts tests/strategies.test.ts tests/journal.test.ts tests/audit-search.test.ts tests/auth.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
