@@ -11,6 +11,9 @@
 //   LLM_API_KEY      API key                 (required)
 //   LLM_TIMEOUT_MS   Request timeout ms      (default: 30000)
 //   LLM_MAX_RETRIES  Retry count on 429/5xx  (default: 2)
+//
+// NOTE: Config is read lazily on each call so tests can override env vars
+// without fighting ESM module cache. getLLMConfig() also reads live env.
 
 // -------------------------------------------------------------------------
 // Types
@@ -19,7 +22,7 @@
 export interface LLMRequest {
   systemPrompt: string;
   userPrompt: string;
-  context?: Record<string, unknown>;  // optional structured context injected as JSON
+  context?: Record<string, unknown>;
 }
 
 export interface LLMUsage {
@@ -37,7 +40,7 @@ export interface LLMResponse {
 }
 
 // -------------------------------------------------------------------------
-// Config - read once at module load, fail fast if misconfigured
+// Config - read lazily from env on every call (test-friendly)
 // -------------------------------------------------------------------------
 
 interface LLMConfig {
@@ -48,21 +51,15 @@ interface LLMConfig {
   maxRetries: number;
 }
 
-function loadConfig(): LLMConfig {
-  const apiKey = process.env.LLM_API_KEY ?? '';
-  if (!apiKey) {
-    console.warn('[llm] WARNING: LLM_API_KEY is not set - generateResponse() will throw at call time');
-  }
+function readConfig(): LLMConfig {
   return {
     baseUrl:    (process.env.LLM_BASE_URL    ?? 'https://api.openai.com/v1').replace(/\/$/, ''),
     model:      process.env.LLM_MODEL        ?? 'gpt-4o',
-    apiKey,
+    apiKey:     process.env.LLM_API_KEY      ?? '',
     timeoutMs:  parseInt(process.env.LLM_TIMEOUT_MS   ?? '30000', 10),
     maxRetries: parseInt(process.env.LLM_MAX_RETRIES   ?? '2',     10),
   };
 }
-
-const config: LLMConfig = loadConfig();
 
 // -------------------------------------------------------------------------
 // Internal helpers
@@ -79,33 +76,26 @@ function deriveProvider(baseUrl: string): string {
   return 'litellm';
 }
 
-// Build the messages array - inject context as a JSON system block if provided
 function buildMessages(req: LLMRequest): Array<{ role: string; content: string }> {
-  const messages: Array<{ role: string; content: string }> = [];
-
   let system = req.systemPrompt;
   if (req.context && Object.keys(req.context).length > 0) {
     system += '\n\nContext:\n' + JSON.stringify(req.context, null, 2);
   }
-  messages.push({ role: 'system', content: system });
-  messages.push({ role: 'user',   content: req.userPrompt });
-  return messages;
+  return [
+    { role: 'system', content: system },
+    { role: 'user',   content: req.userPrompt },
+  ];
 }
 
-// Single attempt - throws on non-2xx after reading body for error detail
-async function attempt(req: LLMRequest, cfg: LLMConfig): Promise<LLMResponse> {
-  if (!cfg.apiKey) {
-    throw new Error('[llm] LLM_API_KEY is not set');
-  }
-
+async function callOnce(req: LLMRequest, cfg: LLMConfig): Promise<LLMResponse> {
   const url      = `${cfg.baseUrl}/chat/completions`;
   const messages = buildMessages(req);
   const body     = JSON.stringify({ model: cfg.model, messages });
+
   const controller = new AbortController();
-  const timer    = setTimeout(() => controller.abort(), cfg.timeoutMs);
+  const timer      = setTimeout(() => controller.abort(), cfg.timeoutMs);
 
   const startMs = Date.now();
-
   let res: Response;
   try {
     res = await fetch(url, {
@@ -155,34 +145,40 @@ async function attempt(req: LLMRequest, cfg: LLMConfig): Promise<LLMResponse> {
 // -------------------------------------------------------------------------
 
 export async function generateResponse(req: LLMRequest): Promise<LLMResponse> {
-  const retryableStatus = new Set([429, 500, 502, 503, 504]);
+  // Read config fresh on every call - env vars may be overridden in tests
+  const cfg = readConfig();
+
+  if (!cfg.apiKey) {
+    throw new Error('[llm] LLM_API_KEY is not set');
+  }
+
+  const retryable = new Set([429, 500, 502, 503, 504]);
   let lastError: unknown;
 
-  for (let attempt_n = 0; attempt_n <= config.maxRetries; attempt_n++) {
-    if (attempt_n > 0) {
-      const backoffMs = 1000 * Math.pow(2, attempt_n - 1); // 1s, 2s, 4s...
-      console.log(`[llm] retry ${attempt_n}/${config.maxRetries} after ${backoffMs}ms`);
+  for (let n = 0; n <= cfg.maxRetries; n++) {
+    if (n > 0) {
+      const backoffMs = 1000 * Math.pow(2, n - 1);
+      console.log(`[llm] retry ${n}/${cfg.maxRetries} after ${backoffMs}ms`);
       await sleep(backoffMs);
     }
 
+    console.log(
+      `[llm] request model=${cfg.model} provider=${deriveProvider(cfg.baseUrl)} ` +
+      `systemLen=${req.systemPrompt.length} userLen=${req.userPrompt.length}`
+    );
+
     try {
-      console.log(
-        `[llm] request model=${config.model} provider=${deriveProvider(config.baseUrl)} ` +
-        `systemLen=${req.systemPrompt.length} userLen=${req.userPrompt.length}`
-      );
-      return await attempt(req, config);
+      return await callOnce(req, cfg);
     } catch (err: unknown) {
       lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-
-      // Check if it's a retryable HTTP error
+      const msg         = err instanceof Error ? err.message : String(err);
       const statusMatch = msg.match(/HTTP (\d+)/);
-      const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
-      const isRetryable = retryableStatus.has(status) || msg.includes('abort');
+      const status      = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+      const isRetryable = retryable.has(status) || msg.includes('abort');
 
-      console.error(`[llm] error attempt=${attempt_n}: ${msg}`);
+      console.error(`[llm] error attempt=${n}: ${msg}`);
 
-      if (!isRetryable || attempt_n >= config.maxRetries) break;
+      if (!isRetryable || n >= cfg.maxRetries) break;
     }
   }
 
@@ -190,15 +186,16 @@ export async function generateResponse(req: LLMRequest): Promise<LLMResponse> {
 }
 
 // -------------------------------------------------------------------------
-// Config introspection - for health checks, never exposes apiKey
+// Config introspection - never exposes apiKey value
 // -------------------------------------------------------------------------
 
 export function getLLMConfig(): Omit<LLMConfig, 'apiKey'> & { apiKeySet: boolean } {
+  const cfg = readConfig();
   return {
-    baseUrl:    config.baseUrl,
-    model:      config.model,
-    timeoutMs:  config.timeoutMs,
-    maxRetries: config.maxRetries,
-    apiKeySet:  config.apiKey.length > 0,
+    baseUrl:    cfg.baseUrl,
+    model:      cfg.model,
+    timeoutMs:  cfg.timeoutMs,
+    maxRetries: cfg.maxRetries,
+    apiKeySet:  cfg.apiKey.length > 0,
   };
 }
