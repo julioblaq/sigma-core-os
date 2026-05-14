@@ -1,2 +1,7 @@
 node_modules/
 apps/dashboard/node_modules/
+node_modules/
+.next/
+*.sqlite
+.env
+.DS_Store
