@@ -11,6 +11,7 @@ const LINKS = [
   { href: '/risk', label: 'Risk' },
   { href: '/strategies', label: 'Strategies' },
   { href: '/journal', label: 'Journal' },
+  { href: '/performance', label: 'Performance' },
   { href: '/audit', label: 'Audit' },
   { href: '/workspace', label: 'Workspace' },
 ];
