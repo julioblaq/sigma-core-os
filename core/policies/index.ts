@@ -117,3 +117,7 @@ export function getApproval(id: string): Approval | null {
   const row = db.get('SELECT * FROM approvals WHERE id = :id', { ':id': id });
   return row ? toApproval(row) : null;
 }
+
+export function listAll(): Approval[] {
+  return db.all('SELECT * FROM approvals ORDER BY created_at DESC').map(toApproval);
+}
