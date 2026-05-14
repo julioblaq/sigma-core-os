@@ -1,65 +1,68 @@
 // core/risk/index.ts
 // Slice 3e (v0.6.0): Sigma Risk Engine - deterministic calculations only.
+// v0.6.1: Added LLM rationale integration via generateTradePlanWithRationale().
 //
 // CRITICAL: All math here is deterministic. No LLM involved in any calculation.
 // LLM is used downstream ONLY for explaining the plan in plain language.
+// If LLM rationale fails, the plan is returned WITHOUT rationale - never blocked.
 //
 // Supported instruments: MNQ, MES, ES, NQ
 // Features:
-//   - Contract specs (tick size, tick value, point value)
-//   - ATR-based stop calculator
-//   - Position sizing by dollar risk
-//   - TP/SL calculator (R:R ratio based)
-//   - Max daily loss guard
-//   - Prop firm drawdown guard
-//   - Trade plan generator (feeds into approval spine)
+// - Contract specs (tick size, tick value, point value)
+// - ATR-based stop calculator
+// - Position sizing by dollar risk
+// - TP/SL calculator (R:R ratio based)
+// - Max daily loss guard
+// - Prop firm drawdown guard
+// - Trade plan generator (feeds into approval spine)
+// - LLM rationale generator (explains plan in plain language, non-blocking)
 
 // ---------------------------------------------------------------------------
 // Contract Specifications
 // ---------------------------------------------------------------------------
 
 export interface ContractSpec {
-  symbol:       string;
-  name:         string;
-  tickSize:     number;  // minimum price move
-  tickValue:    number;  // dollar value per tick
-  pointValue:   number;  // dollar value per full point (1.0)
-  exchange:     string;
+  symbol: string;
+  name: string;
+  tickSize: number;    // minimum price move
+  tickValue: number;   // dollar value per tick
+  pointValue: number;  // dollar value per full point (1.0)
+  exchange: string;
 }
 
 // Exact CME contract specs - deterministic, hardcoded from exchange specs
 export const CONTRACT_SPECS: Record<string, ContractSpec> = {
   ES: {
-    symbol:     'ES',
-    name:       'E-mini S&P 500',
-    tickSize:   0.25,
-    tickValue:  12.50,
+    symbol: 'ES',
+    name: 'E-mini S&P 500',
+    tickSize: 0.25,
+    tickValue: 12.50,
     pointValue: 50.00,
-    exchange:   'CME',
+    exchange: 'CME',
   },
   NQ: {
-    symbol:     'NQ',
-    name:       'E-mini NASDAQ-100',
-    tickSize:   0.25,
-    tickValue:  5.00,
+    symbol: 'NQ',
+    name: 'E-mini NASDAQ-100',
+    tickSize: 0.25,
+    tickValue: 5.00,
     pointValue: 20.00,
-    exchange:   'CME',
+    exchange: 'CME',
   },
   MES: {
-    symbol:     'MES',
-    name:       'Micro E-mini S&P 500',
-    tickSize:   0.25,
-    tickValue:  1.25,
+    symbol: 'MES',
+    name: 'Micro E-mini S&P 500',
+    tickSize: 0.25,
+    tickValue: 1.25,
     pointValue: 5.00,
-    exchange:   'CME',
+    exchange: 'CME',
   },
   MNQ: {
-    symbol:     'MNQ',
-    name:       'Micro E-mini NASDAQ-100',
-    tickSize:   0.25,
-    tickValue:  0.50,
+    symbol: 'MNQ',
+    name: 'Micro E-mini NASDAQ-100',
+    tickSize: 0.25,
+    tickValue: 0.50,
     pointValue: 2.00,
-    exchange:   'CME',
+    exchange: 'CME',
   },
 };
 
@@ -105,21 +108,21 @@ export class RiskError extends Error {
 // ---------------------------------------------------------------------------
 
 export interface PositionSizeInput {
-  symbol:       string;
-  accountSize:  number;  // total account equity in dollars
-  riskDollars:  number;  // dollar amount willing to risk on this trade
-  stopPoints:   number;  // stop distance in points (not ticks)
+  symbol: string;
+  accountSize: number;   // total account equity in dollars
+  riskDollars: number;   // dollar amount willing to risk on this trade
+  stopPoints: number;    // stop distance in points (not ticks)
 }
 
 export interface PositionSizeResult {
-  symbol:        string;
-  contracts:     number;
+  symbol: string;
+  contracts: number;
   riskPerContract: number;  // dollar risk per contract
-  totalRisk:     number;    // riskPerContract * contracts
-  riskPercent:   number;    // totalRisk / accountSize * 100
-  stopPoints:    number;
-  pointValue:    number;
-  warnings:      string[];
+  totalRisk: number;        // riskPerContract * contracts
+  riskPercent: number;      // totalRisk / accountSize * 100
+  stopPoints: number;
+  pointValue: number;
+  warnings: string[];
 }
 
 export function calcPositionSize(input: PositionSizeInput): PositionSizeResult {
@@ -152,7 +155,7 @@ export function calcPositionSize(input: PositionSizeInput): PositionSizeResult {
     );
   }
 
-  const totalRisk   = riskPerContract * contracts;
+  const totalRisk = riskPerContract * contracts;
   const riskPercent = (totalRisk / input.accountSize) * 100;
 
   if (riskPercent > 2) {
@@ -160,13 +163,13 @@ export function calcPositionSize(input: PositionSizeInput): PositionSizeResult {
   }
 
   return {
-    symbol:          spec.symbol,
+    symbol: spec.symbol,
     contracts,
     riskPerContract,
     totalRisk,
     riskPercent,
-    stopPoints:      input.stopPoints,
-    pointValue:      spec.pointValue,
+    stopPoints: input.stopPoints,
+    pointValue: spec.pointValue,
     warnings,
   };
 }
@@ -176,21 +179,21 @@ export function calcPositionSize(input: PositionSizeInput): PositionSizeResult {
 // ---------------------------------------------------------------------------
 
 export interface ATRStopInput {
-  symbol:     string;
-  atr:        number;  // Average True Range in points
-  multiplier: number;  // e.g. 1.5 = stop at 1.5x ATR
-  entry:      number;  // entry price
-  side:       'long' | 'short';
+  symbol: string;
+  atr: number;        // Average True Range in points
+  multiplier: number; // e.g. 1.5 = stop at 1.5x ATR
+  entry: number;      // entry price
+  side: 'long' | 'short';
 }
 
 export interface ATRStopResult {
-  symbol:     string;
-  atr:        number;
+  symbol: string;
+  atr: number;
   multiplier: number;
   stopPoints: number;  // ATR * multiplier
-  stopPrice:  number;  // entry +/- stopPoints
-  entry:      number;
-  side:       'long' | 'short';
+  stopPrice: number;   // entry +/- stopPoints
+  entry: number;
+  side: 'long' | 'short';
 }
 
 export function calcATRStop(input: ATRStopInput): ATRStopResult {
@@ -204,18 +207,18 @@ export function calcATRStop(input: ATRStopInput): ATRStopResult {
   }
 
   const stopPoints = +(input.atr * input.multiplier).toFixed(4);
-  const stopPrice  = input.side === 'long'
+  const stopPrice = input.side === 'long'
     ? +(input.entry - stopPoints).toFixed(4)
     : +(input.entry + stopPoints).toFixed(4);
 
   return {
-    symbol:     input.symbol.toUpperCase(),
-    atr:        input.atr,
+    symbol: input.symbol.toUpperCase(),
+    atr: input.atr,
     multiplier: input.multiplier,
     stopPoints,
     stopPrice,
-    entry:      input.entry,
-    side:       input.side,
+    entry: input.entry,
+    side: input.side,
   };
 }
 
@@ -225,21 +228,21 @@ export function calcATRStop(input: ATRStopInput): ATRStopResult {
 
 export interface TPSLInput {
   symbol: string;
-  entry:  number;
-  stop:   number;   // stop price
-  rr:     number;   // reward:risk ratio (e.g. 2 = 2:1)
-  side:   'long' | 'short';
+  entry: number;
+  stop: number;    // stop price
+  rr: number;     // reward:risk ratio (e.g. 2 = 2:1)
+  side: 'long' | 'short';
 }
 
 export interface TPSLResult {
-  symbol:    string;
-  entry:     number;
-  stop:      number;
-  target:    number;
-  rr:        number;
-  stopPoints:   number;
+  symbol: string;
+  entry: number;
+  stop: number;
+  target: number;
+  rr: number;
+  stopPoints: number;
   targetPoints: number;
-  side:      'long' | 'short';
+  side: 'long' | 'short';
 }
 
 export function calcTPSL(input: TPSLInput): TPSLResult {
@@ -249,7 +252,7 @@ export function calcTPSL(input: TPSLInput): TPSLResult {
     throw new RiskError('INVALID_RR', 'R:R ratio must be > 0');
   }
 
-  const stopPoints   = Math.abs(input.entry - input.stop);
+  const stopPoints = Math.abs(input.entry - input.stop);
   const targetPoints = +(stopPoints * input.rr).toFixed(4);
 
   if (stopPoints === 0) {
@@ -261,14 +264,14 @@ export function calcTPSL(input: TPSLInput): TPSLResult {
     : +(input.entry - targetPoints).toFixed(4);
 
   return {
-    symbol:       input.symbol.toUpperCase(),
-    entry:        input.entry,
-    stop:         input.stop,
+    symbol: input.symbol.toUpperCase(),
+    entry: input.entry,
+    stop: input.stop,
     target,
-    rr:           input.rr,
-    stopPoints:   +stopPoints.toFixed(4),
+    rr: input.rr,
+    stopPoints: +stopPoints.toFixed(4),
     targetPoints,
-    side:         input.side,
+    side: input.side,
   };
 }
 
@@ -277,18 +280,18 @@ export function calcTPSL(input: TPSLInput): TPSLResult {
 // ---------------------------------------------------------------------------
 
 export interface DailyLossInput {
-  accountSize:      number;
+  accountSize: number;
   dailyLossDollars: number;  // current day's realized + unrealized loss
-  maxDailyLossPct:  number;  // max allowed daily loss as % of account (e.g. 2 = 2%)
+  maxDailyLossPct: number;   // max allowed daily loss as % of account (e.g. 2 = 2%)
 }
 
 export interface DailyLossResult {
-  breached:        boolean;
+  breached: boolean;
   dailyLossDollars: number;
   maxAllowedDollars: number;
   remainingDollars: number;
-  utilizationPct:  number;
-  warning:         string | undefined;
+  utilizationPct: number;
+  warning: string | undefined;
 }
 
 export function checkDailyLoss(input: DailyLossInput): DailyLossResult {
@@ -299,10 +302,10 @@ export function checkDailyLoss(input: DailyLossInput): DailyLossResult {
     throw new RiskError('INVALID_RISK_PERCENT', 'maxDailyLossPct must be between 0 and 100');
   }
 
-  const maxAllowedDollars  = +(input.accountSize * (input.maxDailyLossPct / 100)).toFixed(2);
-  const breached           = input.dailyLossDollars >= maxAllowedDollars;
-  const remainingDollars   = +Math.max(0, maxAllowedDollars - input.dailyLossDollars).toFixed(2);
-  const utilizationPct     = +((input.dailyLossDollars / maxAllowedDollars) * 100).toFixed(2);
+  const maxAllowedDollars = +(input.accountSize * (input.maxDailyLossPct / 100)).toFixed(2);
+  const breached = input.dailyLossDollars >= maxAllowedDollars;
+  const remainingDollars = +Math.max(0, maxAllowedDollars - input.dailyLossDollars).toFixed(2);
+  const utilizationPct = +((input.dailyLossDollars / maxAllowedDollars) * 100).toFixed(2);
 
   let warning: string | undefined;
   if (breached) {
@@ -319,19 +322,19 @@ export function checkDailyLoss(input: DailyLossInput): DailyLossResult {
 // ---------------------------------------------------------------------------
 
 export interface PropDrawdownInput {
-  startingBalance:   number;  // account balance at start of evaluation
-  currentBalance:    number;  // current balance
-  maxDrawdownPct:    number;  // prop firm max drawdown % (e.g. 5 = 5%)
-  trailingHighWater?: number; // optional: highest balance reached (for trailing DD)
+  startingBalance: number;      // account balance at start of evaluation
+  currentBalance: number;       // current balance
+  maxDrawdownPct: number;       // prop firm max drawdown % (e.g. 5 = 5%)
+  trailingHighWater?: number;   // optional: highest balance reached (for trailing DD)
 }
 
 export interface PropDrawdownResult {
-  breached:          boolean;
-  drawdownDollars:   number;
+  breached: boolean;
+  drawdownDollars: number;
   maxAllowedDrawdown: number;
-  remainingDollars:  number;
-  utilizationPct:    number;
-  warning:           string | undefined;
+  remainingDollars: number;
+  utilizationPct: number;
+  warning: string | undefined;
 }
 
 export function checkPropDrawdown(input: PropDrawdownInput): PropDrawdownResult {
@@ -342,12 +345,12 @@ export function checkPropDrawdown(input: PropDrawdownInput): PropDrawdownResult 
     throw new RiskError('INVALID_RISK_PERCENT', 'maxDrawdownPct must be between 0 and 100');
   }
 
-  const highWater         = input.trailingHighWater ?? input.startingBalance;
-  const drawdownDollars   = +Math.max(0, highWater - input.currentBalance).toFixed(2);
+  const highWater = input.trailingHighWater ?? input.startingBalance;
+  const drawdownDollars = +Math.max(0, highWater - input.currentBalance).toFixed(2);
   const maxAllowedDrawdown = +(input.startingBalance * (input.maxDrawdownPct / 100)).toFixed(2);
-  const breached          = drawdownDollars >= maxAllowedDrawdown;
-  const remainingDollars  = +Math.max(0, maxAllowedDrawdown - drawdownDollars).toFixed(2);
-  const utilizationPct    = +((drawdownDollars / maxAllowedDrawdown) * 100).toFixed(2);
+  const breached = drawdownDollars >= maxAllowedDrawdown;
+  const remainingDollars = +Math.max(0, maxAllowedDrawdown - drawdownDollars).toFixed(2);
+  const utilizationPct = +((drawdownDollars / maxAllowedDrawdown) * 100).toFixed(2);
 
   let warning: string | undefined;
   if (breached) {
@@ -366,62 +369,67 @@ export function checkPropDrawdown(input: PropDrawdownInput): PropDrawdownResult 
 // ---------------------------------------------------------------------------
 
 export interface TradePlanInput {
-  symbol:          string;
-  side:            'long' | 'short';
-  entry:           number;
-  stopPoints:      number;       // stop distance in points
-  rrRatio:         number;       // reward:risk
-  accountSize:     number;
-  riskDollars:     number;
-  dailyLossDollars?: number;     // current day loss (for guard check)
-  maxDailyLossPct?: number;      // default: 2%
-  propStartBalance?: number;     // for prop drawdown guard
-  propMaxDrawdownPct?: number;   // default: 5%
-  atr?:            number;       // optional: if provided, validates stop is ATR-reasonable
+  symbol: string;
+  side: 'long' | 'short';
+  entry: number;
+  stopPoints: number;       // stop distance in points
+  rrRatio: number;          // reward:risk
+  accountSize: number;
+  riskDollars: number;
+  dailyLossDollars?: number;   // current day loss (for guard check)
+  maxDailyLossPct?: number;    // default: 2%
+  propStartBalance?: number;   // for prop drawdown guard
+  propMaxDrawdownPct?: number; // default: 5%
+  atr?: number;                // optional: if provided, validates stop is ATR-reasonable
 }
 
 export interface TradePlanResult {
-  symbol:        string;
-  side:          'long' | 'short';
-  entry:         number;
-  stop:          number;
-  target:        number;
-  contracts:     number;
-  stopPoints:    number;
-  targetPoints:  number;
-  rr:            number;
-  riskDollars:   number;
-  riskPercent:   number;
-  pointValue:    number;
+  symbol: string;
+  side: 'long' | 'short';
+  entry: number;
+  stop: number;
+  target: number;
+  contracts: number;
+  stopPoints: number;
+  targetPoints: number;
+  rr: number;
+  riskDollars: number;
+  riskPercent: number;
+  pointValue: number;
   dailyLossCheck?: DailyLossResult;
-  propCheck?:    PropDrawdownResult;
-  warnings:      string[];
-  blocked:       boolean;
-  blockReasons:  string[];
+  propCheck?: PropDrawdownResult;
+  warnings: string[];
+  blocked: boolean;
+  blockReasons: string[];
+  // LLM rationale (v0.6.1) - added by generateTradePlanWithRationale(), never by generateTradePlan()
+  rationale?: string;
+  rationaleProvider?: string;
+  rationaleLatencyMs?: number;
+  rationaleTokens?: number;
 }
 
 export function generateTradePlan(input: TradePlanInput): TradePlanResult {
-  const spec     = getContractSpec(input.symbol);
+  const spec = getContractSpec(input.symbol);
   const warnings: string[] = [];
   const blockReasons: string[] = [];
 
   // TP/SL calc
   const tpsl = calcTPSL({
     symbol: input.symbol,
-    entry:  input.entry,
-    stop:   input.side === 'long'
-              ? input.entry - input.stopPoints
-              : input.entry + input.stopPoints,
-    rr:     input.rrRatio,
-    side:   input.side,
+    entry: input.entry,
+    stop: input.side === 'long'
+      ? input.entry - input.stopPoints
+      : input.entry + input.stopPoints,
+    rr: input.rrRatio,
+    side: input.side,
   });
 
   // Position size
   const sizing = calcPositionSize({
-    symbol:      input.symbol,
+    symbol: input.symbol,
     accountSize: input.accountSize,
     riskDollars: input.riskDollars,
-    stopPoints:  input.stopPoints,
+    stopPoints: input.stopPoints,
   });
 
   if (sizing.warnings.length) warnings.push(...sizing.warnings);
@@ -430,9 +438,9 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
   let dailyLossCheck: DailyLossResult | undefined;
   if (input.dailyLossDollars !== undefined) {
     dailyLossCheck = checkDailyLoss({
-      accountSize:      input.accountSize,
+      accountSize: input.accountSize,
       dailyLossDollars: input.dailyLossDollars,
-      maxDailyLossPct:  input.maxDailyLossPct ?? 2,
+      maxDailyLossPct: input.maxDailyLossPct ?? 2,
     });
     if (dailyLossCheck.breached) {
       blockReasons.push(dailyLossCheck.warning ?? 'Daily loss limit breached');
@@ -445,9 +453,9 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
   let propCheck: PropDrawdownResult | undefined;
   if (input.propStartBalance !== undefined) {
     propCheck = checkPropDrawdown({
-      startingBalance:  input.propStartBalance,
-      currentBalance:   input.accountSize,
-      maxDrawdownPct:   input.propMaxDrawdownPct ?? 5,
+      startingBalance: input.propStartBalance,
+      currentBalance: input.accountSize,
+      maxDrawdownPct: input.propMaxDrawdownPct ?? 5,
     });
     if (propCheck.breached) {
       blockReasons.push(propCheck.warning ?? 'Prop firm drawdown limit breached');
@@ -457,22 +465,118 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
   }
 
   return {
-    symbol:        spec.symbol,
-    side:          input.side,
-    entry:         input.entry,
-    stop:          tpsl.stop,
-    target:        tpsl.target,
-    contracts:     sizing.contracts,
-    stopPoints:    tpsl.stopPoints,
-    targetPoints:  tpsl.targetPoints,
-    rr:            input.rrRatio,
-    riskDollars:   sizing.totalRisk,
-    riskPercent:   sizing.riskPercent,
-    pointValue:    spec.pointValue,
+    symbol: spec.symbol,
+    side: input.side,
+    entry: input.entry,
+    stop: tpsl.stop,
+    target: tpsl.target,
+    contracts: sizing.contracts,
+    stopPoints: tpsl.stopPoints,
+    targetPoints: tpsl.targetPoints,
+    rr: input.rrRatio,
+    riskDollars: sizing.totalRisk,
+    riskPercent: sizing.riskPercent,
+    pointValue: spec.pointValue,
     dailyLossCheck,
     propCheck,
     warnings,
-    blocked:       blockReasons.length > 0,
+    blocked: blockReasons.length > 0,
     blockReasons,
   };
+}
+
+// ---------------------------------------------------------------------------
+// LLM Rationale Generator (v0.6.1)
+// Explains a deterministic trade plan in plain language using generateResponse().
+//
+// CRITICAL RULES:
+// - LLM NEVER performs calculations — deterministic plan is already complete
+// - LLM ONLY explains: risk context, R:R rationale, ATR context, prop-firm
+//   implications, sizing rationale
+// - If rationale generation fails for ANY reason: plan is returned as-is
+// - Rationale failure NEVER blocks trade plan creation
+// - Provider metadata is stored for audit purposes
+// ---------------------------------------------------------------------------
+
+export interface RationaleResult {
+  rationale: string;
+  provider: string;
+  latencyMs: number;
+  tokens?: number;
+}
+
+export async function generateRationale(plan: TradePlanResult): Promise<RationaleResult | undefined> {
+  // Lazy import to avoid circular deps and ESM cache issues
+  const { generateResponse } = await import('../llm/index.js');
+
+  const prompt = [
+    `You are a risk management assistant explaining a futures trade plan to a trader.`,
+    `The plan was generated deterministically — all numbers are final and correct.`,
+    `Your job is to explain the plan in plain language. Do NOT recalculate anything.`,
+    ``,
+    `Trade Plan:`,
+    `- Instrument: ${plan.symbol} (${plan.side.toUpperCase()})`,
+    `- Entry: ${plan.entry}`,
+    `- Stop: ${plan.stop} (${plan.stopPoints} points risk)`,
+    `- Target: ${plan.target} (${plan.targetPoints} points reward)`,
+    `- Contracts: ${plan.contracts}`,
+    `- Dollar Risk: $${plan.riskDollars.toFixed(2)} (${plan.riskPercent.toFixed(2)}% of account)`,
+    `- R:R Ratio: ${plan.rr}:1`,
+    plan.dailyLossCheck ? `- Daily Loss Utilization: ${plan.dailyLossCheck.utilizationPct.toFixed(1)}%` : null,
+    plan.propCheck ? `- Prop Drawdown Utilization: ${plan.propCheck.utilizationPct.toFixed(1)}%` : null,
+    plan.warnings.length ? `- Warnings: ${plan.warnings.join('; ')}` : null,
+    plan.blocked ? `- STATUS: BLOCKED — ${plan.blockReasons.join('; ')}` : `- STATUS: UNBLOCKED — ready for approval`,
+    ``,
+    `Write a concise (3-5 sentence) plain-language explanation of this trade plan.`,
+    `Focus on: what the trader is risking, what they stand to gain, any notable risk context.`,
+    `Do not output JSON. Do not repeat the numbers verbatim. Explain the story of the trade.`,
+  ].filter(Boolean).join('\n');
+
+  const t0 = Date.now();
+  try {
+    const result = await generateResponse(prompt);
+    const latencyMs = Date.now() - t0;
+
+    // Validate response is non-empty string
+    if (!result || typeof result !== 'object') {
+      return undefined;
+    }
+
+    const text = (result as { text?: string; content?: string }).text
+      ?? (result as { text?: string; content?: string }).content
+      ?? (typeof result === 'string' ? result : undefined);
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return undefined;
+    }
+
+    return {
+      rationale: text.trim(),
+      provider: (result as { provider?: string }).provider ?? 'unknown',
+      latencyMs,
+      tokens: (result as { tokens?: number }).tokens,
+    };
+  } catch {
+    // Any LLM failure (provider error, chain exhaustion, timeout) is non-blocking
+    return undefined;
+  }
+}
+
+// generateTradePlanWithRationale: async wrapper that adds LLM explanation.
+// The deterministic plan is ALWAYS returned. Rationale is best-effort.
+export async function generateTradePlanWithRationale(input: TradePlanInput): Promise<TradePlanResult> {
+  // Step 1: deterministic calculation — always runs, always source of truth
+  const plan = generateTradePlan(input);
+
+  // Step 2: LLM rationale — best-effort, never blocks plan
+  const rationaleResult = await generateRationale(plan);
+
+  if (rationaleResult) {
+    plan.rationale = rationaleResult.rationale;
+    plan.rationaleProvider = rationaleResult.provider;
+    plan.rationaleLatencyMs = rationaleResult.latencyMs;
+    plan.rationaleTokens = rationaleResult.tokens;
+  }
+
+  return plan;
 }
