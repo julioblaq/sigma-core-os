@@ -82,6 +82,14 @@ import {
   type JournalOutcome,
 } from '../../core/journal/index.js';
 import {
+  getPerformanceSummary,
+  getEquityCurve,
+  getDrawdown,
+  getCalendar,
+  getBreakdown,
+  type PerformanceFilter,
+} from '../../core/performance/index.js';
+import {
   register,
   login,
   logout,
@@ -718,6 +726,73 @@ app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
       if (err instanceof JournalError) return reply.code(400).send({ error: err.message, code: err.code });
       throw err;
     }
+  },
+);
+
+
+// ---------------------------------------------------------------------------
+// Performance endpoints (v0.9.0)
+// ---------------------------------------------------------------------------
+
+type PerfQuery = { strategyId?: string; symbol?: string; from?: string; to?: string };
+
+function perfFilter(workspaceId: string, q: PerfQuery): PerformanceFilter {
+  return {
+    workspaceId,
+    strategyId: q.strategyId,
+    symbol: q.symbol,
+    from: q.from,
+    to: q.to,
+  };
+}
+
+// GET /v1/workspaces/:id/performance/summary
+app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
+  '/v1/workspaces/:id/performance/summary',
+  async (req, reply) => {
+    const ws = getWorkspace(req.params.id);
+    if (!ws) return reply.code(404).send({ error: 'workspace not found' });
+    return getPerformanceSummary(perfFilter(req.params.id, req.query));
+  },
+);
+
+// GET /v1/workspaces/:id/performance/equity
+app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
+  '/v1/workspaces/:id/performance/equity',
+  async (req, reply) => {
+    const ws = getWorkspace(req.params.id);
+    if (!ws) return reply.code(404).send({ error: 'workspace not found' });
+    return getEquityCurve(perfFilter(req.params.id, req.query));
+  },
+);
+
+// GET /v1/workspaces/:id/performance/drawdown
+app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
+  '/v1/workspaces/:id/performance/drawdown',
+  async (req, reply) => {
+    const ws = getWorkspace(req.params.id);
+    if (!ws) return reply.code(404).send({ error: 'workspace not found' });
+    return getDrawdown(perfFilter(req.params.id, req.query));
+  },
+);
+
+// GET /v1/workspaces/:id/performance/calendar
+app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
+  '/v1/workspaces/:id/performance/calendar',
+  async (req, reply) => {
+    const ws = getWorkspace(req.params.id);
+    if (!ws) return reply.code(404).send({ error: 'workspace not found' });
+    return getCalendar(perfFilter(req.params.id, req.query));
+  },
+);
+
+// GET /v1/workspaces/:id/performance/breakdown
+app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
+  '/v1/workspaces/:id/performance/breakdown',
+  async (req, reply) => {
+    const ws = getWorkspace(req.params.id);
+    if (!ws) return reply.code(404).send({ error: 'workspace not found' });
+    return getBreakdown(perfFilter(req.params.id, req.query));
   },
 );
 
