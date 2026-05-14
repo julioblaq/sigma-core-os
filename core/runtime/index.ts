@@ -1,8 +1,9 @@
 // core/runtime/index.ts
 // Logs final task outcomes after approval resolution.
-// Slice 2:  reason field added for denial records.
+// Slice 2: reason field added for denial records.
 // Slice 3d: executeWrite() - sandboxed file write for approved dev_task artifacts.
 // Slice 3b: executeTrade() - paper broker submission for approved trade_plan.
+// Slice 7d: searchLog() - audit log search with filters.
 
 import { randomUUID } from 'crypto';
 import { db } from '../db.js';
@@ -21,14 +22,14 @@ import {
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS outcome_log (
-    id          TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY,
     approval_id TEXT NOT NULL,
-    task_type   TEXT NOT NULL,
-    agent       TEXT NOT NULL,
-    outcome     TEXT NOT NULL,
+    task_type TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    outcome TEXT NOT NULL,
     resolved_by TEXT,
-    reason      TEXT,
-    logged_at   TEXT NOT NULL
+    reason TEXT,
+    logged_at TEXT NOT NULL
   )
 `);
 
@@ -50,63 +51,111 @@ export interface OutcomeEntry {
   loggedAt: string;
 }
 
+export interface LogSearchParams {
+  agent?: string;
+  action?: string;
+  status?: 'approved' | 'denied';
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
 export type WriteResult =
-  | { outcome: 'written';  sandboxResult: SandboxWriteResult }
-  | { outcome: 'denied';   reason: string }
-  | { outcome: 'skipped';  reason: string }
-  | { outcome: 'blocked';  error: string };
+  | { outcome: 'written'; sandboxResult: SandboxWriteResult }
+  | { outcome: 'denied'; reason: string }
+  | { outcome: 'skipped'; reason: string }
+  | { outcome: 'blocked'; error: string };
 
 export type TradeResult =
   | { outcome: 'submitted'; orderResult: PaperOrderResult }
-  | { outcome: 'denied';    reason: string }
-  | { outcome: 'blocked';   error: string };
+  | { outcome: 'denied'; reason: string }
+  | { outcome: 'blocked'; error: string };
 
 // ---------------------------------------------------------------------------
 // logOutcome - append-only outcome record
 // ---------------------------------------------------------------------------
 
 export function logOutcome(approval: Approval, taskType: string): OutcomeEntry {
-  const id  = randomUUID();
+  const id = randomUUID();
   const now = new Date().toISOString();
   db.run(
     `INSERT INTO outcome_log
       (id, approval_id, task_type, agent, outcome, resolved_by, reason, logged_at)
-     VALUES (:id, :aid, :type, :agent, :outcome, :by, :reason, :at)`,
+      VALUES (:id, :aid, :type, :agent, :outcome, :by, :reason, :at)`,
     {
-      ':id':      id,
-      ':aid':     approval.id,
-      ':type':    taskType,
-      ':agent':   approval.agent,
+      ':id': id,
+      ':aid': approval.id,
+      ':type': taskType,
+      ':agent': approval.agent,
       ':outcome': approval.status,
-      ':by':      approval.resolvedBy ?? null,
-      ':reason':  approval.reason ?? null,
-      ':at':      now,
+      ':by': approval.resolvedBy ?? null,
+      ':reason': approval.reason ?? null,
+      ':at': now,
     },
   );
   console.log(`[runtime] outcome=${approval.status} approval=${approval.id}`);
   return {
     id,
-    approvalId:  approval.id,
+    approvalId: approval.id,
     taskType,
-    agent:       approval.agent,
-    outcome:     approval.status as 'approved' | 'denied',
-    resolvedBy:  approval.resolvedBy,
-    reason:      approval.reason,
-    loggedAt:    now,
+    agent: approval.agent,
+    outcome: approval.status as 'approved' | 'denied',
+    resolvedBy: approval.resolvedBy,
+    reason: approval.reason,
+    loggedAt: now,
+  };
+}
+
+function rowToEntry(r: Record<string, unknown>): OutcomeEntry {
+  return {
+    id: r['id'] as string,
+    approvalId: r['approval_id'] as string,
+    taskType: r['task_type'] as string,
+    agent: r['agent'] as string,
+    outcome: r['outcome'] as 'approved' | 'denied',
+    resolvedBy: r['resolved_by'] as string | undefined,
+    reason: r['reason'] as string | undefined,
+    loggedAt: r['logged_at'] as string,
   };
 }
 
 export function getLog(): OutcomeEntry[] {
-  return db.all('SELECT * FROM outcome_log ORDER BY logged_at DESC').map(r => ({
-    id:         r['id']          as string,
-    approvalId: r['approval_id'] as string,
-    taskType:   r['task_type']   as string,
-    agent:      r['agent']       as string,
-    outcome:    r['outcome']     as 'approved' | 'denied',
-    resolvedBy: r['resolved_by'] as string | undefined,
-    reason:     r['reason']      as string | undefined,
-    loggedAt:   r['logged_at']   as string,
-  }));
+  return db.all('SELECT * FROM outcome_log ORDER BY logged_at DESC').map(rowToEntry);
+}
+
+// searchLog — read-only filtered query against outcome_log
+// Filters: agent (exact), action/taskType (exact), status/outcome (exact),
+//          from/to (ISO date string prefix, inclusive), limit (max 500)
+export function searchLog(params: LogSearchParams): OutcomeEntry[] {
+  const conditions: string[] = [];
+  const bindings: Record<string, string | number> = {};
+
+  if (params.agent) {
+    conditions.push('agent = :agent');
+    bindings[':agent'] = params.agent;
+  }
+  if (params.action) {
+    conditions.push('task_type = :action');
+    bindings[':action'] = params.action;
+  }
+  if (params.status) {
+    conditions.push('outcome = :status');
+    bindings[':status'] = params.status;
+  }
+  if (params.from) {
+    conditions.push('logged_at >= :from');
+    bindings[':from'] = params.from;
+  }
+  if (params.to) {
+    conditions.push('logged_at <= :to');
+    bindings[':to'] = params.to;
+  }
+
+  const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+  const limit = Math.min(params.limit ?? 100, 500);
+  const sql = `SELECT * FROM outcome_log ${where} ORDER BY logged_at DESC LIMIT ${limit}`;
+
+  return db.all(sql, Object.keys(bindings).length > 0 ? bindings : undefined).map(rowToEntry);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +168,7 @@ export function executeWrite(approval: Approval): WriteResult {
     return { outcome: 'denied', reason: approval.reason ?? 'not approved' };
   }
 
-  const payload  = approval.payload as Record<string, unknown>;
+  const payload = approval.payload as Record<string, unknown>;
   const artifact = payload.artifact as Record<string, unknown> | undefined;
 
   if (!artifact || !artifact.requiresWrite) {
@@ -127,8 +176,8 @@ export function executeWrite(approval: Approval): WriteResult {
   }
 
   const filePath = artifact.filePath as string | undefined;
-  const content  = artifact.content  as string | undefined;
-  const action   = artifact.action   as string | undefined;
+  const content = artifact.content as string | undefined;
+  const action = artifact.action as string | undefined;
 
   if (!filePath || !content || !action) {
     return { outcome: 'blocked', error: 'artifact missing filePath, content, or action' };
@@ -165,17 +214,17 @@ export function executeTrade(approval: Approval): TradeResult {
 
   // Extract signal from approval payload
   const payload = approval.payload as Record<string, unknown>;
-  const signal  = (payload.signal ?? payload) as Record<string, unknown>;
+  const signal = (payload.signal ?? payload) as Record<string, unknown>;
 
-  const symbol   = (signal.symbol   ?? payload.symbol)   as string  | undefined;
-  const side     = (signal.direction ?? signal.side ?? payload.side) as string | undefined;
-  const quantity = (signal.quantity  ?? payload.quantity) as number  | undefined;
-  const entry    = (signal.entry     ?? payload.entry)    as number  | undefined;
-  const stop     = (signal.stop      ?? payload.stop)     as number  | undefined;
-  const target   = (signal.target    ?? payload.target)   as number  | undefined;
+  const symbol = (signal.symbol ?? payload.symbol) as string | undefined;
+  const side = (signal.direction ?? signal.side ?? payload.side) as string | undefined;
+  const quantity = (signal.quantity ?? payload.quantity) as number | undefined;
+  const entry = (signal.entry ?? payload.entry) as number | undefined;
+  const stop = (signal.stop ?? payload.stop) as number | undefined;
+  const target = (signal.target ?? payload.target) as number | undefined;
 
   if (!symbol || !side || quantity === undefined || entry === undefined
-      || stop === undefined || target === undefined) {
+    || stop === undefined || target === undefined) {
     const missing = ['symbol', 'side', 'quantity', 'entry', 'stop', 'target']
       .filter(f => !(signal[f] ?? payload[f]))
       .join(', ');
@@ -186,13 +235,13 @@ export function executeTrade(approval: Approval): TradeResult {
     const orderResult = submitPaperOrder({
       approvalId: approval.id,
       symbol,
-      side:       side as 'long' | 'short',
+      side: side as 'long' | 'short',
       quantity,
       entry,
       stop,
       target,
       resolvedBy: approval.resolvedBy,
-      mode:       'paper',
+      mode: 'paper',
     });
     console.log(`[runtime] trade submitted order=${orderResult.id} symbol=${symbol} approval=${approval.id}`);
     return { outcome: 'submitted', orderResult };
