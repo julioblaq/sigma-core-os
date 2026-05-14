@@ -1,16 +1,12 @@
-/**
- * tests/approval-spine.test.ts
+**
+            * tests/approval-spine.test.ts
  * Slice 2 tests: approve, deny, and double-resolution prevention.
- *
- * Uses Node built-in test runner (node:test) + assert.
- * Run: npm test
- *
- * NOTE: Tests run against the live sigma.db file. SQLite returns null (not
- * undefined) for missing TEXT columns, so we use assert.ok(!x) for
- * "no reason" assertions instead of strict undefined equality.
+                        *
+                        * Uses Node built-in test runner (node:test) + assert.
+                        * Run: npm test
  */
 
-import { describe, it } from 'node:test';
+                       import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { requestApproval, resolveApproval, getApproval, listPending } from '../core/policies/index.js';
@@ -30,7 +26,7 @@ describe('Approval spine', () => {
                                            assert.ok(a.id);
                                            assert.equal(a.resolvedAt, undefined);
                                            assert.equal(a.resolvedBy, undefined);
-                                           assert.ok(!a.reason, 'reason should be null/undefined for a new approval');
+                                           assert.equal(a.reason, undefined);
                           });
 
                         it('resolveApproval sets status to approved', () => {
@@ -42,7 +38,7 @@ describe('Approval spine', () => {
                                          assert.equal(resolved.status, 'approved');
                                          assert.ok(resolved.resolvedAt);
                                          assert.equal(resolved.resolvedBy, 'julio');
-                                         assert.ok(!resolved.reason, 'reason should be null/undefined when approving');
+                                         assert.equal(resolved.reason, undefined);
                         });
 
                         it('logOutcome records approved outcome', () => {
@@ -54,7 +50,7 @@ describe('Approval spine', () => {
                                          assert.equal(entry.outcome, 'approved');
                                          assert.equal(entry.approvalId, a.id);
                                          assert.equal(entry.agent, 'sigma-bot');
-                                         assert.ok(!entry.reason, 'reason should be null/undefined for approved outcomes');
+                                         assert.equal(entry.reason, undefined);
 
                                  const log = getLog();
                                          assert.ok(log.some(e => e.approvalId === a.id && e.outcome === 'approved'));
@@ -105,8 +101,7 @@ describe('Approval spine', () => {
                         });
 
                         it('denial without reason returns 400 from API (server-level guard)', () => {
-                                         // Logic test - verify the guard condition directly
-                                 const approved = false;
+                                         const approved = false;
                                          const reason = undefined;
                                          const shouldReject = !approved && !reason;
                                          assert.equal(shouldReject, true, 'server should reject deny without reason');
