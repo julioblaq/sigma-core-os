@@ -4,20 +4,48 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
-:root {
-  --bg:      #0a0a0f;
-  --panel:   #111118;
-  --border:  #1e1e2e;
-  --accent:  #f59e0b;
-  --green:   #10b981;
-  --red:     #ef4444;
-  --blue:    #3b82f6;
-  --text:    #e2e8f0;
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  --bg: #0a0a0f;
+  --panel: #111118;
+  --panel-hover: #16161f;
+  --border: #1e1e2e;
+  --border-hover: #2a2a3e;
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --green: #10b981;
+  --red: #ef4444;
+  --blue: #3b82f6;
+  --purple: #a78bfa;
+  --text: #e2e8f0;
   --subtext: #94a3b8;
-  --muted:   #6b7280;
+  --muted: #6b7280;
+  --input-bg: #0d0d14;
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
 
-* { box-sizing: border-box; }
+/* Light theme */
+[data-theme="light"] {
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --panel-hover: #f1f5f9;
+  --border: #e2e8f0;
+  --border-hover: #cbd5e1;
+  --accent: #d97706;
+  --accent-hover: #f59e0b;
+  --green: #059669;
+  --red: #dc2626;
+  --blue: #2563eb;
+  --purple: #7c3aed;
+  --text: #0f172a;
+  --subtext: #475569;
+  --muted: #94a3b8;
+  --input-bg: #f8fafc;
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
   background-color: var(--bg);
@@ -35,23 +63,205 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
-/* Monospace elements */
+/* Monospace */
 code, pre, .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 
 /* Status badges */
-.badge-pending  { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
-.badge-approved { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
-.badge-denied   { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+.badge-pending  { background: rgba(59,130,246,0.15);  color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+.badge-approved { background: rgba(16,185,129,0.15);  color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+.badge-denied   { background: rgba(239,68,68,0.15);   color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
 
 /* Table */
 .sigma-table { width: 100%; border-collapse: collapse; }
 .sigma-table th { color: var(--subtext); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
 .sigma-table td { padding: 10px 12px; border-bottom: 1px solid rgba(30,30,46,0.5); vertical-align: top; }
-.sigma-table tr:hover td { background: rgba(26,26,42,0.6); }
+.sigma-table tr:hover td { background: var(--panel-hover); }
 
 /* Panel */
-.sigma-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+.sigma-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+
+/* Input base */
+.sigma-input {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  width: 100%;
+  transition: border-color 0.15s;
+  outline: none;
+}
+.sigma-input:focus { border-color: var(--accent); }
+.sigma-input::placeholder { color: var(--muted); }
+
+/* Button variants */
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--border-hover); color: var(--text); }
+
+/* Filter chip */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.filter-chip:hover { border-color: var(--accent); color: var(--text); }
+.filter-chip.active { border-color: var(--accent); background: rgba(245,158,11,0.12); color: var(--accent); }
+.filter-chip .remove { opacity: 0.6; font-size: 13px; line-height: 1; }
+.filter-chip .remove:hover { opacity: 1; }
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 20px;
+  backdrop-filter: blur(2px);
+}
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  max-width: 640px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+/* Loading skeleton */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--panel) 25%, var(--border) 50%, var(--panel) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
 
 /* Pulse dot */
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 .pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+
+/* Recharts dark overrides */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border) !important;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+}
+.recharts-text { fill: var(--muted) !important; font-size: 11px !important; font-family: 'JetBrains Mono', monospace !important; }
+
+/* Mobile nav */
+@media (max-width: 768px) {
+  .nav-links { display: none; }
+  .nav-links.open { display: flex; flex-direction: column; position: fixed; top: 48px; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--border); padding: 16px; gap: 4px; z-index: 40; overflow-y: auto; }
+  .nav-links.open a { padding: 10px 12px; border-radius: 6px; }
+  .nav-hamburger { display: flex !important; }
+}
+
+/* Responsive charts */
+.chart-container { width: 100%; min-height: 200px; }
+
+/* Sticky workspace bar */
+.workspace-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  backdrop-filter: blur(8px);
+}
+
+/* Summary card hover */
+.summary-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  transition: border-color 0.15s, background 0.15s;
+  cursor: default;
+}
+.summary-card:hover { border-color: var(--border-hover); background: var(--panel-hover); }
+
+/* Tag pill */
+.tag-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(100,116,139,0.15);
+  color: var(--muted);
+  border: 1px solid rgba(100,116,139,0.2);
+}
+
+/* Calendar cell */
+.cal-cell {
+  width: 36px;
+  height: 36px;
+  border-radius: 5px;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  color: rgba(255,255,255,0.8);
+  transition: transform 0.1s;
+}
+.cal-cell:hover { transform: scale(1.15); z-index: 1; position: relative; }
+
+/* Transition helpers */
+.fade-in { animation: fadeIn 0.2s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
