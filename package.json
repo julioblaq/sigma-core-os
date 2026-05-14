@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch apps/api/server.ts",
     "start": "tsx apps/api/server.ts",
-    "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts",
+    "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts tests/llm.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
