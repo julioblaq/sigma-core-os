@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/activity', label: 'Activity' },
   { href: '/risk', label: 'Risk' },
   { href: '/strategies', label: 'Strategies' },
+  { href: '/journal', label: 'Journal' },
   { href: '/workspace', label: 'Workspace' },
 ];
 
@@ -39,16 +40,11 @@ export default function NavBar() {
   return (
     <nav style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
       <div className="max-w-screen-2xl mx-auto px-6 flex items-center gap-6 h-12">
-        {/* Logo */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="mono font-semibold text-sm" style={{ color: 'var(--accent)' }}>SIGMA</span>
           <span className="mono text-xs" style={{ color: 'var(--muted)' }}>CORE OS</span>
         </div>
-
-        {/* Divider */}
         <div className="w-px h-4" style={{ background: 'var(--border)' }} />
-
-        {/* Nav links */}
         {LINKS.map(link => {
           const active = path.startsWith(link.href);
           return (
@@ -57,21 +53,19 @@ export default function NavBar() {
               style={{ color: active ? 'var(--text)' : 'var(--muted)' }}>
               {link.label}
               {link.href === '/approvals' && pendingCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded text-xs mono" style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa', fontSize: 10 }}>
+                <span className="px-1.5 py-0.5 rounded text-xs mono"
+                  style={{ background: 'rgba(59,130,246,0.2)', color: '#60a5fa', fontSize: 10 }}>
                   {pendingCount}
                 </span>
               )}
               {active && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: 'var(--accent)' }} />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                  style={{ background: 'var(--accent)' }} />
               )}
             </Link>
           );
         })}
-
-        {/* Spacer */}
         <div className="flex-1" />
-
-        {/* API status */}
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full ${apiOk === null ? 'pulse' : ''}`}
             style={{ background: apiOk === null ? 'var(--muted)' : apiOk ? 'var(--green)' : 'var(--red)' }} />
