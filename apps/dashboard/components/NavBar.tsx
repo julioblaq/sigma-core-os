@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/log',       label: 'Runtime Log' },
   { href: '/memory',    label: 'Memory' },
   { href: '/activity',  label: 'Activity' },
+  { href: '/risk',      label: 'Risk' },
 ];
 
 export default function NavBar() {
