@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 const LINKS = [
@@ -15,20 +15,34 @@ const LINKS = [
   { href: '/workspace', label: 'Workspace' },
 ];
 
+interface Me {
+  username: string;
+  email: string;
+}
+
 export default function NavBar() {
   const path = usePathname();
+  const router = useRouter();
   const [pendingCount, setPendingCount] = useState(0);
   const [apiOk, setApiOk] = useState<boolean | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     async function check() {
       try {
-        const [health, pending] = await Promise.all([
-          fetch('/api/health').then(r => r.json()),
-          fetch('/api/v1/approvals').then(r => r.json()),
+        const token = typeof window !== 'undefined' ? localStorage.getItem('sigma_token') : null;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const [health, pending, meRes] = await Promise.all([
+          fetch('/api/health', { headers }).then(r => r.json()),
+          fetch('/api/v1/approvals', { headers }).then(r => r.json()),
+          fetch('/api/v1/auth/me', { credentials: 'include', headers }).then(r => r.ok ? r.json() : null),
         ]);
         setApiOk(health?.status === 'ok');
         setPendingCount(Array.isArray(pending) ? pending.length : 0);
+        setMe(meRes?.user ?? null);
       } catch {
         setApiOk(false);
       }
@@ -37,6 +51,21 @@ export default function NavBar() {
     const t = setInterval(check, 5000);
     return () => clearInterval(t);
   }, []);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('sigma_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include', headers });
+      if (typeof window !== 'undefined') localStorage.removeItem('sigma_token');
+      setMe(null);
+      router.push('/login');
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <nav style={{ background: 'var(--panel)', borderBottom: '1px solid var(--border)' }}>
@@ -67,12 +96,48 @@ export default function NavBar() {
           );
         })}
         <div className="flex-1" />
-        <div className="flex items-center gap-1.5">
-          <span className={`w-1.5 h-1.5 rounded-full ${apiOk === null ? 'pulse' : ''}`}
-            style={{ background: apiOk === null ? 'var(--muted)' : apiOk ? 'var(--green)' : 'var(--red)' }} />
-          <span className="mono text-xs" style={{ color: 'var(--muted)' }}>
-            {apiOk === null ? 'connecting' : apiOk ? 'api:ok' : 'api:down'}
-          </span>
+        <div className="flex items-center gap-3">
+          {/* API status */}
+          <div className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${apiOk === null ? 'pulse' : ''}`}
+              style={{ background: apiOk === null ? 'var(--muted)' : apiOk ? 'var(--green)' : 'var(--red)' }} />
+            <span className="mono text-xs" style={{ color: 'var(--muted)' }}>
+              {apiOk === null ? 'connecting' : apiOk ? 'api:ok' : 'api:down'}
+            </span>
+          </div>
+          {/* User badge */}
+          {me ? (
+            <div className="flex items-center gap-2">
+              <div style={{
+                background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border)',
+                borderRadius: 6, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{
+                  width: 20, height: 20, borderRadius: '50%',
+                  background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 10, fontWeight: 700, color: '#000', fontFamily: 'var(--font-mono)',
+                }}>
+                  {me.username.charAt(0).toUpperCase()}
+                </span>
+                <span className="mono text-xs" style={{ color: 'var(--text)' }}>{me.username}</span>
+              </div>
+              <button onClick={handleLogout} disabled={loggingOut} style={{
+                background: 'transparent', border: '1px solid var(--border)',
+                color: 'var(--muted)', borderRadius: 5, padding: '3px 10px',
+                fontSize: 11, fontFamily: 'var(--font-mono)', cursor: 'pointer',
+              }}>
+                {loggingOut ? '…' : 'logout'}
+              </button>
+            </div>
+          ) : (
+            <Link href="/login" style={{
+              background: 'var(--accent)', color: '#000', borderRadius: 5,
+              padding: '3px 12px', fontSize: 11, fontFamily: 'var(--font-mono)',
+              fontWeight: 700, textDecoration: 'none',
+            }}>
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </nav>
