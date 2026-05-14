@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:      #0a0a0f;
+  --panel:   #111118;
+  --border:  #1e1e2e;
+  --accent:  #f59e0b;
+  --green:   #10b981;
+  --red:     #ef4444;
+  --blue:    #3b82f6;
+  --text:    #e2e8f0;
+  --subtext: #94a3b8;
+  --muted:   #6b7280;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* Monospace elements */
+code, pre, .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+/* Status badges */
+.badge-pending  { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+.badge-approved { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+.badge-denied   { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
+/* Table */
+.sigma-table { width: 100%; border-collapse: collapse; }
+.sigma-table th { color: var(--subtext); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left; }
+.sigma-table td { padding: 10px 12px; border-bottom: 1px solid rgba(30,30,46,0.5); vertical-align: top; }
+.sigma-table tr:hover td { background: rgba(26,26,42,0.6); }
+
+/* Panel */
+.sigma-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+
+/* Pulse dot */
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+.pulse { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
