@@ -7,15 +7,6 @@
 // If LLM rationale fails, the plan is returned WITHOUT rationale - never blocked.
 //
 // Supported instruments: MNQ, MES, ES, NQ
-// Features:
-// - Contract specs (tick size, tick value, point value)
-// - ATR-based stop calculator
-// - Position sizing by dollar risk
-// - TP/SL calculator (R:R ratio based)
-// - Max daily loss guard
-// - Prop firm drawdown guard
-// - Trade plan generator (feeds into approval spine)
-// - LLM rationale generator (explains plan in plain language, non-blocking)
 
 // ---------------------------------------------------------------------------
 // Contract Specifications
@@ -24,13 +15,12 @@
 export interface ContractSpec {
   symbol: string;
   name: string;
-  tickSize: number;    // minimum price move
-  tickValue: number;   // dollar value per tick
-  pointValue: number;  // dollar value per full point (1.0)
+  tickSize: number;
+  tickValue: number;
+  pointValue: number;
   exchange: string;
 }
 
-// Exact CME contract specs - deterministic, hardcoded from exchange specs
 export const CONTRACT_SPECS: Record<string, ContractSpec> = {
   ES: {
     symbol: 'ES',
@@ -109,17 +99,17 @@ export class RiskError extends Error {
 
 export interface PositionSizeInput {
   symbol: string;
-  accountSize: number;   // total account equity in dollars
-  riskDollars: number;   // dollar amount willing to risk on this trade
-  stopPoints: number;    // stop distance in points (not ticks)
+  accountSize: number;
+  riskDollars: number;
+  stopPoints: number;
 }
 
 export interface PositionSizeResult {
   symbol: string;
   contracts: number;
-  riskPerContract: number;  // dollar risk per contract
-  totalRisk: number;        // riskPerContract * contracts
-  riskPercent: number;      // totalRisk / accountSize * 100
+  riskPerContract: number;
+  totalRisk: number;
+  riskPercent: number;
   stopPoints: number;
   pointValue: number;
   warnings: string[];
@@ -180,9 +170,9 @@ export function calcPositionSize(input: PositionSizeInput): PositionSizeResult {
 
 export interface ATRStopInput {
   symbol: string;
-  atr: number;        // Average True Range in points
-  multiplier: number; // e.g. 1.5 = stop at 1.5x ATR
-  entry: number;      // entry price
+  atr: number;
+  multiplier: number;
+  entry: number;
   side: 'long' | 'short';
 }
 
@@ -190,14 +180,14 @@ export interface ATRStopResult {
   symbol: string;
   atr: number;
   multiplier: number;
-  stopPoints: number;  // ATR * multiplier
-  stopPrice: number;   // entry +/- stopPoints
+  stopPoints: number;
+  stopPrice: number;
   entry: number;
   side: 'long' | 'short';
 }
 
 export function calcATRStop(input: ATRStopInput): ATRStopResult {
-  getContractSpec(input.symbol); // validate symbol
+  getContractSpec(input.symbol);
 
   if (input.atr <= 0) {
     throw new RiskError('INVALID_ATR', 'ATR must be > 0');
@@ -229,8 +219,8 @@ export function calcATRStop(input: ATRStopInput): ATRStopResult {
 export interface TPSLInput {
   symbol: string;
   entry: number;
-  stop: number;    // stop price
-  rr: number;     // reward:risk ratio (e.g. 2 = 2:1)
+  stop: number;
+  rr: number;
   side: 'long' | 'short';
 }
 
@@ -246,7 +236,7 @@ export interface TPSLResult {
 }
 
 export function calcTPSL(input: TPSLInput): TPSLResult {
-  getContractSpec(input.symbol); // validate symbol
+  getContractSpec(input.symbol);
 
   if (input.rr <= 0) {
     throw new RiskError('INVALID_RR', 'R:R ratio must be > 0');
@@ -281,8 +271,8 @@ export function calcTPSL(input: TPSLInput): TPSLResult {
 
 export interface DailyLossInput {
   accountSize: number;
-  dailyLossDollars: number;  // current day's realized + unrealized loss
-  maxDailyLossPct: number;   // max allowed daily loss as % of account (e.g. 2 = 2%)
+  dailyLossDollars: number;
+  maxDailyLossPct: number;
 }
 
 export interface DailyLossResult {
@@ -322,10 +312,10 @@ export function checkDailyLoss(input: DailyLossInput): DailyLossResult {
 // ---------------------------------------------------------------------------
 
 export interface PropDrawdownInput {
-  startingBalance: number;      // account balance at start of evaluation
-  currentBalance: number;       // current balance
-  maxDrawdownPct: number;       // prop firm max drawdown % (e.g. 5 = 5%)
-  trailingHighWater?: number;   // optional: highest balance reached (for trailing DD)
+  startingBalance: number;
+  currentBalance: number;
+  maxDrawdownPct: number;
+  trailingHighWater?: number;
 }
 
 export interface PropDrawdownResult {
@@ -364,23 +354,21 @@ export function checkPropDrawdown(input: PropDrawdownInput): PropDrawdownResult 
 
 // ---------------------------------------------------------------------------
 // Trade Plan Generator
-// Combines all calculations and produces a complete trade plan for approval.
-// Does NOT submit or approve anything - that is handled by the API layer.
 // ---------------------------------------------------------------------------
 
 export interface TradePlanInput {
   symbol: string;
   side: 'long' | 'short';
   entry: number;
-  stopPoints: number;       // stop distance in points
-  rrRatio: number;          // reward:risk
+  stopPoints: number;
+  rrRatio: number;
   accountSize: number;
   riskDollars: number;
-  dailyLossDollars?: number;   // current day loss (for guard check)
-  maxDailyLossPct?: number;    // default: 2%
-  propStartBalance?: number;   // for prop drawdown guard
-  propMaxDrawdownPct?: number; // default: 5%
-  atr?: number;                // optional: if provided, validates stop is ATR-reasonable
+  dailyLossDollars?: number;
+  maxDailyLossPct?: number;
+  propStartBalance?: number;
+  propMaxDrawdownPct?: number;
+  atr?: number;
 }
 
 export interface TradePlanResult {
@@ -401,7 +389,7 @@ export interface TradePlanResult {
   warnings: string[];
   blocked: boolean;
   blockReasons: string[];
-  // LLM rationale (v0.6.1) - added by generateTradePlanWithRationale(), never by generateTradePlan()
+  // v0.6.1 LLM rationale fields - only set by generateTradePlanWithRationale()
   rationale?: string;
   rationaleProvider?: string;
   rationaleLatencyMs?: number;
@@ -413,7 +401,6 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
   const warnings: string[] = [];
   const blockReasons: string[] = [];
 
-  // TP/SL calc
   const tpsl = calcTPSL({
     symbol: input.symbol,
     entry: input.entry,
@@ -424,7 +411,6 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
     side: input.side,
   });
 
-  // Position size
   const sizing = calcPositionSize({
     symbol: input.symbol,
     accountSize: input.accountSize,
@@ -434,7 +420,6 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
 
   if (sizing.warnings.length) warnings.push(...sizing.warnings);
 
-  // Daily loss guard (optional)
   let dailyLossCheck: DailyLossResult | undefined;
   if (input.dailyLossDollars !== undefined) {
     dailyLossCheck = checkDailyLoss({
@@ -449,7 +434,6 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
     }
   }
 
-  // Prop drawdown guard (optional)
   let propCheck: PropDrawdownResult | undefined;
   if (input.propStartBalance !== undefined) {
     propCheck = checkPropDrawdown({
@@ -487,15 +471,12 @@ export function generateTradePlan(input: TradePlanInput): TradePlanResult {
 
 // ---------------------------------------------------------------------------
 // LLM Rationale Generator (v0.6.1)
-// Explains a deterministic trade plan in plain language using generateResponse().
 //
 // CRITICAL RULES:
 // - LLM NEVER performs calculations — deterministic plan is already complete
-// - LLM ONLY explains: risk context, R:R rationale, ATR context, prop-firm
-//   implications, sizing rationale
-// - If rationale generation fails for ANY reason: plan is returned as-is
-// - Rationale failure NEVER blocks trade plan creation
-// - Provider metadata is stored for audit purposes
+// - LLM ONLY explains: risk, R:R rationale, ATR context, prop-firm implications, sizing rationale
+// - Rationale generation failure NEVER blocks trade plan creation
+// - Provider metadata stored for audit
 // ---------------------------------------------------------------------------
 
 export interface RationaleResult {
@@ -506,64 +487,53 @@ export interface RationaleResult {
 }
 
 export async function generateRationale(plan: TradePlanResult): Promise<RationaleResult | undefined> {
-  // Lazy import to avoid circular deps and ESM cache issues
+  // Lazy import — avoids circular deps and ESM cache issues
   const { generateResponse } = await import('../llm/index.js');
 
-  const prompt = [
-    `You are a risk management assistant explaining a futures trade plan to a trader.`,
-    `The plan was generated deterministically — all numbers are final and correct.`,
-    `Your job is to explain the plan in plain language. Do NOT recalculate anything.`,
-    ``,
-    `Trade Plan:`,
+  const userPrompt = [
+    `Trade Plan Summary:`,
     `- Instrument: ${plan.symbol} (${plan.side.toUpperCase()})`,
-    `- Entry: ${plan.entry}`,
-    `- Stop: ${plan.stop} (${plan.stopPoints} points risk)`,
-    `- Target: ${plan.target} (${plan.targetPoints} points reward)`,
-    `- Contracts: ${plan.contracts}`,
+    `- Entry: ${plan.entry} | Stop: ${plan.stop} (${plan.stopPoints} pts) | Target: ${plan.target} (${plan.targetPoints} pts)`,
+    `- Contracts: ${plan.contracts} | Point Value: $${plan.pointValue}`,
     `- Dollar Risk: $${plan.riskDollars.toFixed(2)} (${plan.riskPercent.toFixed(2)}% of account)`,
     `- R:R Ratio: ${plan.rr}:1`,
-    plan.dailyLossCheck ? `- Daily Loss Utilization: ${plan.dailyLossCheck.utilizationPct.toFixed(1)}%` : null,
-    plan.propCheck ? `- Prop Drawdown Utilization: ${plan.propCheck.utilizationPct.toFixed(1)}%` : null,
+    plan.dailyLossCheck ? `- Daily Loss Used: ${plan.dailyLossCheck.utilizationPct.toFixed(1)}% of limit` : null,
+    plan.propCheck ? `- Prop Drawdown Used: ${plan.propCheck.utilizationPct.toFixed(1)}% of limit` : null,
     plan.warnings.length ? `- Warnings: ${plan.warnings.join('; ')}` : null,
-    plan.blocked ? `- STATUS: BLOCKED — ${plan.blockReasons.join('; ')}` : `- STATUS: UNBLOCKED — ready for approval`,
+    plan.blocked ? `- STATUS: BLOCKED — ${plan.blockReasons.join('; ')}` : `- STATUS: UNBLOCKED`,
     ``,
     `Write a concise (3-5 sentence) plain-language explanation of this trade plan.`,
-    `Focus on: what the trader is risking, what they stand to gain, any notable risk context.`,
-    `Do not output JSON. Do not repeat the numbers verbatim. Explain the story of the trade.`,
+    `Focus on what the trader risks, what they stand to gain, and any notable risk context.`,
+    `Do not recalculate anything. Do not output JSON.`,
   ].filter(Boolean).join('\n');
 
   const t0 = Date.now();
   try {
-    const result = await generateResponse(prompt);
+    const result = await generateResponse({
+      systemPrompt: 'You are a risk management assistant explaining futures trade plans to traders. You never perform calculations — you only explain plans already calculated.',
+      userPrompt,
+    });
     const latencyMs = Date.now() - t0;
 
-    // Validate response is non-empty string
-    if (!result || typeof result !== 'object') {
-      return undefined;
-    }
-
-    const text = (result as { text?: string; content?: string }).text
-      ?? (result as { text?: string; content?: string }).content
-      ?? (typeof result === 'string' ? result : undefined);
-
-    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+    // Validate non-empty string content
+    if (!result || typeof result.content !== 'string' || result.content.trim().length === 0) {
       return undefined;
     }
 
     return {
-      rationale: text.trim(),
-      provider: (result as { provider?: string }).provider ?? 'unknown',
+      rationale: result.content.trim(),
+      provider: result.provider ?? 'unknown',
       latencyMs,
-      tokens: (result as { tokens?: number }).tokens,
+      tokens: result.usage?.totalTokens,
     };
   } catch {
-    // Any LLM failure (provider error, chain exhaustion, timeout) is non-blocking
+    // Any failure (provider error, chain exhaustion, timeout) is non-blocking
     return undefined;
   }
 }
 
 // generateTradePlanWithRationale: async wrapper that adds LLM explanation.
-// The deterministic plan is ALWAYS returned. Rationale is best-effort.
+// Deterministic plan is ALWAYS returned. Rationale is best-effort.
 export async function generateTradePlanWithRationale(input: TradePlanInput): Promise<TradePlanResult> {
   // Step 1: deterministic calculation — always runs, always source of truth
   const plan = generateTradePlan(input);
