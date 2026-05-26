@@ -341,11 +341,12 @@ app.get('/v1/github/jules-work', async (req, reply) => {
     const issues = await issuesRes.json();
     const prs = await prsRes.json();
 
-    // Filter PRs: submitted by Jules or labeled for review
+    // Filter PRs: submitted by Jules, labeled 'jules', or labeled for review
     const filteredPrs = Array.isArray(prs) ? prs.filter((pr: any) => {
-      const isJules = pr.user?.login?.toLowerCase().includes('jules');
+      const isJulesAuthor = pr.user?.login?.toLowerCase().includes('jules');
+      const hasJulesLabel = pr.labels?.some((l: any) => l.name.toLowerCase() === 'jules');
       const hasReviewLabel = pr.labels?.some((l: any) => l.name.toLowerCase().includes('review'));
-      return isJules || hasReviewLabel;
+      return isJulesAuthor || hasJulesLabel || hasReviewLabel;
     }) : [];
 
     return {
