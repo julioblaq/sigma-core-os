@@ -98,6 +98,12 @@ import {
   AuthError,
   type User,
 } from '../../core/auth/index.js';
+import {
+  filterJulesPullRequests,
+  isJulesIssue,
+  type GitHubIssue,
+  type GitHubPullRequest,
+} from '../../core/github/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -329,8 +335,8 @@ app.get('/v1/github/jules-work', async (req, reply) => {
 
   try {
     const [issuesRes, prsRes] = await Promise.all([
-      fetch(`https://api.github.com/repos/${REPO}/issues?labels=jules&state=open`, { headers }),
-      fetch(`https://api.github.com/repos/${REPO}/pulls?state=open`, { headers }),
+      fetch(`https://api.github.com/repos/${REPO}/issues?labels=jules&state=all&per_page=100`, { headers }),
+      fetch(`https://api.github.com/repos/${REPO}/pulls?state=open&per_page=100`, { headers }),
     ]);
 
     if (!issuesRes.ok || !prsRes.ok) {
@@ -338,36 +344,31 @@ app.get('/v1/github/jules-work', async (req, reply) => {
       return reply.code(502).send({ error: 'GitHub API error' });
     }
 
-    const issues = await issuesRes.json();
-    const prs = await prsRes.json();
-
-    // Filter PRs: submitted by Jules, labeled 'jules', or labeled for review
-    const filteredPrs = Array.isArray(prs) ? prs.filter((pr: any) => {
-      const isJulesAuthor = pr.user?.login?.toLowerCase().includes('jules');
-      const hasJulesLabel = pr.labels?.some((l: any) => l.name.toLowerCase() === 'jules');
-      const hasReviewLabel = pr.labels?.some((l: any) => l.name.toLowerCase().includes('review'));
-      return isJulesAuthor || hasJulesLabel || hasReviewLabel;
-    }) : [];
+    const issuePayload = await issuesRes.json();
+    const prPayload = await prsRes.json();
+    const issues = Array.isArray(issuePayload) ? issuePayload as GitHubIssue[] : [];
+    const prs = Array.isArray(prPayload) ? prPayload as GitHubPullRequest[] : [];
+    const filteredPrs = filterJulesPullRequests(issues, prs);
 
     return {
-      issues: Array.isArray(issues) ? issues
-        .filter((i: any) => !i.pull_request) // GitHub issues API returns PRs too
-        .map((i: any) => ({
+      issues: issues
+        .filter(i => isJulesIssue(i) && i.state?.toLowerCase() === 'open')
+        .map(i => ({
           id: i.id,
           title: i.title,
           url: i.html_url,
           number: i.number,
           createdAt: i.created_at,
-          labels: i.labels?.map((l: any) => l.name),
-        })) : [],
-      pullRequests: filteredPrs.map((p: any) => ({
+          labels: i.labels?.map(l => l.name),
+        })),
+      pullRequests: filteredPrs.map(p => ({
         id: p.id,
         title: p.title,
         url: p.html_url,
         number: p.number,
         createdAt: p.created_at,
         user: p.user?.login,
-        labels: p.labels?.map((l: any) => l.name),
+        labels: p.labels?.map(l => l.name),
       })),
     };
   } catch (err) {
