@@ -98,6 +98,12 @@ import {
   AuthError,
   type User,
 } from '../../core/auth/index.js';
+import {
+  filterJulesPullRequests,
+  isJulesIssue,
+  type GitHubIssue,
+  type GitHubPullRequest,
+} from '../../core/github/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -309,6 +315,66 @@ app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
   if (ns) return memList(ns);
   const namespaces = ['sigma-bot', 'sigma-dev', 'sigma-risk'];
   return namespaces.flatMap(n => memList(n));
+});
+
+// ---------------------------------------------------------------------------
+// GitHub
+// ---------------------------------------------------------------------------
+
+app.get('/v1/github/jules-work', async (req, reply) => {
+  const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  const REPO = 'julioblaq/sigma-core-os';
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'Sigma-Core-OS-Agent',
+  };
+  if (GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${GITHUB_TOKEN}`;
+  }
+
+  try {
+    const [issuesRes, prsRes] = await Promise.all([
+      fetch(`https://api.github.com/repos/${REPO}/issues?labels=jules&state=all&per_page=100`, { headers }),
+      fetch(`https://api.github.com/repos/${REPO}/pulls?state=open&per_page=100`, { headers }),
+    ]);
+
+    if (!issuesRes.ok || !prsRes.ok) {
+      req.log.error(`GitHub API error: issues=${issuesRes.status} prs=${prsRes.status}`);
+      return reply.code(502).send({ error: 'GitHub API error' });
+    }
+
+    const issuePayload = await issuesRes.json();
+    const prPayload = await prsRes.json();
+    const issues = Array.isArray(issuePayload) ? issuePayload as GitHubIssue[] : [];
+    const prs = Array.isArray(prPayload) ? prPayload as GitHubPullRequest[] : [];
+    const filteredPrs = filterJulesPullRequests(issues, prs);
+
+    return {
+      issues: issues
+        .filter(i => isJulesIssue(i) && i.state?.toLowerCase() === 'open')
+        .map(i => ({
+          id: i.id,
+          title: i.title,
+          url: i.html_url,
+          number: i.number,
+          createdAt: i.created_at,
+          labels: i.labels?.map(l => l.name),
+        })),
+      pullRequests: filteredPrs.map(p => ({
+        id: p.id,
+        title: p.title,
+        url: p.html_url,
+        number: p.number,
+        createdAt: p.created_at,
+        user: p.user?.login,
+        labels: p.labels?.map(l => l.name),
+      })),
+    };
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch from GitHub' });
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -68,15 +68,15 @@ export default function ArtifactModal({ approval, onClose }: { approval: Approva
           <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--subtext)' }}>Artifact</div>
             <Row label="Action"    value={<span className="mono">{String(artifact.action ?? '-')}</span>} />
-            {artifact.filePath && <Row label="File Path" value={<span className="mono" style={{ color: 'var(--accent)' }}>{String(artifact.filePath)}</span>} />}
-            {artifact.language && <Row label="Language"  value={<span className="mono">{String(artifact.language)}</span>} />}
+            {Boolean(artifact.filePath) && <Row label="File Path" value={<span className="mono" style={{ color: 'var(--accent)' }}>{String(artifact.filePath)}</span>} />}
+            {Boolean(artifact.language) && <Row label="Language"  value={<span className="mono">{String(artifact.language)}</span>} />}
             <Row label="Requires Write" value={<span className="mono">{artifact.requiresWrite ? 'yes' : 'no'}</span>} />
             <Row label="Generated" value={<span className="mono">{artifact.generatedAt ? new Date(String(artifact.generatedAt)).toLocaleString() : '-'}</span>} />
           </div>
         )}
 
         {/* Generated content */}
-        {artifact?.content && (
+        {artifact && Boolean(artifact.content) && (
           <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--subtext)' }}>
               Generated Content
