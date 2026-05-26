@@ -312,6 +312,70 @@ app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
 });
 
 // ---------------------------------------------------------------------------
+// GitHub
+// ---------------------------------------------------------------------------
+
+app.get('/v1/github/jules-work', async (req, reply) => {
+  const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  const REPO = 'julioblaq/sigma-core-os';
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'Sigma-Core-OS-Agent',
+  };
+  if (GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${GITHUB_TOKEN}`;
+  }
+
+  try {
+    const [issuesRes, prsRes] = await Promise.all([
+      fetch(`https://api.github.com/repos/${REPO}/issues?labels=jules&state=open`, { headers }),
+      fetch(`https://api.github.com/repos/${REPO}/pulls?state=open`, { headers }),
+    ]);
+
+    if (!issuesRes.ok || !prsRes.ok) {
+      req.log.error(`GitHub API error: issues=${issuesRes.status} prs=${prsRes.status}`);
+      return reply.code(502).send({ error: 'GitHub API error' });
+    }
+
+    const issues = await issuesRes.json();
+    const prs = await prsRes.json();
+
+    // Filter PRs: submitted by Jules or labeled for review
+    const filteredPrs = Array.isArray(prs) ? prs.filter((pr: any) => {
+      const isJules = pr.user?.login?.toLowerCase().includes('jules');
+      const hasReviewLabel = pr.labels?.some((l: any) => l.name.toLowerCase().includes('review'));
+      return isJules || hasReviewLabel;
+    }) : [];
+
+    return {
+      issues: Array.isArray(issues) ? issues
+        .filter((i: any) => !i.pull_request) // GitHub issues API returns PRs too
+        .map((i: any) => ({
+          id: i.id,
+          title: i.title,
+          url: i.html_url,
+          number: i.number,
+          createdAt: i.created_at,
+          labels: i.labels?.map((l: any) => l.name),
+        })) : [],
+      pullRequests: filteredPrs.map((p: any) => ({
+        id: p.id,
+        title: p.title,
+        url: p.html_url,
+        number: p.number,
+        createdAt: p.created_at,
+        user: p.user?.login,
+        labels: p.labels?.map((l: any) => l.name),
+      })),
+    };
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ error: 'Failed to fetch from GitHub' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Risk Engine
 // ---------------------------------------------------------------------------
 
