@@ -99,8 +99,7 @@ import {
   type User,
 } from '../../core/auth/index.js';
 import {
-  filterJulesPullRequests,
-  isJulesIssue,
+  buildJulesWork,
   type GitHubIssue,
   type GitHubPullRequest,
 } from '../../core/github/index.js';
@@ -336,7 +335,7 @@ app.get('/v1/github/jules-work', async (req, reply) => {
   try {
     const [issuesRes, prsRes] = await Promise.all([
       fetch(`https://api.github.com/repos/${REPO}/issues?labels=jules&state=all&per_page=100`, { headers }),
-      fetch(`https://api.github.com/repos/${REPO}/pulls?state=open&per_page=100`, { headers }),
+      fetch(`https://api.github.com/repos/${REPO}/pulls?state=all&per_page=100`, { headers }),
     ]);
 
     if (!issuesRes.ok || !prsRes.ok) {
@@ -348,29 +347,7 @@ app.get('/v1/github/jules-work', async (req, reply) => {
     const prPayload = await prsRes.json();
     const issues = Array.isArray(issuePayload) ? issuePayload as GitHubIssue[] : [];
     const prs = Array.isArray(prPayload) ? prPayload as GitHubPullRequest[] : [];
-    const filteredPrs = filterJulesPullRequests(issues, prs);
-
-    return {
-      issues: issues
-        .filter(i => isJulesIssue(i) && i.state?.toLowerCase() === 'open')
-        .map(i => ({
-          id: i.id,
-          title: i.title,
-          url: i.html_url,
-          number: i.number,
-          createdAt: i.created_at,
-          labels: i.labels?.map(l => l.name),
-        })),
-      pullRequests: filteredPrs.map(p => ({
-        id: p.id,
-        title: p.title,
-        url: p.html_url,
-        number: p.number,
-        createdAt: p.created_at,
-        user: p.user?.login,
-        labels: p.labels?.map(l => l.name),
-      })),
-    };
+    return buildJulesWork(issues, prs);
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ error: 'Failed to fetch from GitHub' });
