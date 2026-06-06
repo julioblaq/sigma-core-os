@@ -41,7 +41,7 @@ Environment: production
 |---|---:|---|---|---|
 | Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. Uses `/data/sigma.db` on the attached Railway volume and has been verified across redeploy. Keep single-replica until PostgreSQL migration is implemented. |
 | Sigma Dashboard | Cloud Safe | `cd apps/dashboard && npm run start` | `apps/dashboard/package.json`, `apps/dashboard/next.config.mjs` | Deployed to Railway service `sigma-dashboard` at `https://sigma-dashboard-production-a7a7.up.railway.app`. `/approvals` renders with HTTP 200 and points at the Railway API URL. |
-| Railway Postgres | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Postgres` (`f80547fb-42aa-42c7-afa7-018044531379`) with `postgres-volume`. Not yet used by Sigma code; next step is migration code and data copy from SQLite. |
+| Railway Postgres | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Postgres` (`f80547fb-42aa-42c7-afa7-018044531379`) with `postgres-volume`. Data migration command exists, but Sigma runtime still reads SQLite. |
 | Railway Redis | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Redis` (`4107f338-a335-4547-a8d3-22e5e0c67669`) with `redis-volume`. Not yet used by Sigma code; next step is queue/cache integration. |
 | Sigma Voice Agent | Cloud Safe | `sigma-dashboard` mic UI + `sigma-api` voice routes | `apps/dashboard/app/voice/page.tsx`, `core/voice/index.ts`, `apps/api/server.ts` | Voice is an operator input layer. It transcribes audio, can synthesize replies, and queues approval-gated voice task drafts. It does not execute tasks or broker actions directly. |
 | Sigma Bot TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-bot/handler.ts`, `core/router/index.ts` | Currently runs in-process when API receives `trade_plan` tasks. Keep with API for first migration, or later split into `agent-worker` when a durable queue exists. |
@@ -153,7 +153,7 @@ The repository now has Dockerfile-based Railway deployment assets for the Sigma 
 - `docker-compose.yml`
 - process manager config
 - queue worker entrypoint
-- PostgreSQL migration scripts and repository support for `DATABASE_URL`
+- Runtime repository support for `DATABASE_URL`
 - Redis queue/cache integration and repository support for `REDIS_URL`
 - CI/CD deployment workflow
 
@@ -208,6 +208,16 @@ Railway managed PostgreSQL and Redis were blocked from the CLI because `railway 
 
 The `sigma-api` Railway volume at `/data` is now active. Deployment `d46ed713-75d8-4434-a5de-3fc219fac9a9` opened `/data/sigma.db`, passed the public `/health` check, and read back a smoke-test approval after redeploy. This proves the current SQLite database survives container replacement.
 
+SQLite-to-Postgres migration layer added on 2026-06-06:
+
+```text
+npm run db:migrate:postgres -- --dry-run
+npm run db:migrate:postgres
+npm run db:migrate:postgres -- --verify-only
+```
+
+The command creates the Postgres schema, upserts rows from all current Sigma SQLite tables, and verifies row counts. It does not switch the live API runtime to Postgres.
+
 Use an isolated test database for migration validation. Do not run migration tests against the live/local `sigma.db`.
 
 Current git working tree also already had unrelated local changes before this audit:
@@ -222,7 +232,7 @@ The clean dependency install restored the missing `node_modules` files. The exis
 1. Deploy `sigma-api` from `deploy/railway/sigma-api.Dockerfile`.
 2. Deploy `sigma-dashboard` from `deploy/railway/sigma-dashboard.Dockerfile`.
 3. Keep SQLite on a single Railway volume only as a temporary bridge.
-4. Add PostgreSQL migration code and move durable state to managed Railway `Postgres` before multi-replica usage.
+4. Run the SQLite-to-Postgres migration, then add runtime Postgres support before multi-replica usage.
 5. Keep agent handlers in-process until a durable queue exists.
 6. Keep OpenD, broker desktop software, MFA sessions, and Hermes trading profile local.
 7. Audit Hermes default gateway separately before deploying it to Railway.

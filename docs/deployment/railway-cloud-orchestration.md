@@ -118,6 +118,20 @@ Managed Railway databases are provisioned for the next migration step:
 | `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Not yet used by Sigma code. |
 | `Redis` | Online | Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, backed by `redis-volume`. Not yet used by Sigma code. |
 
+The first migration layer is available as:
+
+```text
+npm run db:migrate:postgres
+```
+
+Safe sequence:
+
+1. Run `npm run db:migrate:postgres -- --dry-run` against the source SQLite file.
+2. Set `POSTGRES_MIGRATION_URL`, `DATABASE_PUBLIC_URL`, or `DATABASE_URL` outside git.
+3. Run `npm run db:migrate:postgres` to create schema, copy rows, and verify counts.
+4. Run `npm run db:migrate:postgres -- --verify-only` after any later copy.
+5. Keep `sigma-api` on SQLite until runtime Postgres support is implemented.
+
 ## Variables
 
 ### `sigma-api`
@@ -306,7 +320,8 @@ Today is successful when:
 ## Open Cloud Follow-Ups
 
 - Monitor `/data/sigma.db` persistence across redeploys.
-- Add PostgreSQL migration code and move durable state from `/data/sigma.db` to managed Railway `Postgres`.
+- Run the SQLite-to-Postgres migration against managed Railway `Postgres`.
+- Add runtime Postgres support and move durable reads/writes from `/data/sigma.db` to managed Railway `Postgres`.
 - Add Redis queue/cache integration against managed Railway `Redis`.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.

@@ -63,6 +63,28 @@ Keep `sigma-api` at one replica while SQLite is the production store. Move to Po
 
 Railway managed `Postgres` and `Redis` are provisioned and online. Do not point `sigma-api` at `DATABASE_URL` or `REDIS_URL` until the repository has PostgreSQL migration code and Redis queue/cache integration.
 
+## SQLite To Postgres Migration
+
+The repository includes a first-pass migration command:
+
+```text
+npm run db:migrate:postgres -- --dry-run
+```
+
+That command reads the source SQLite database and prints row counts without connecting to Postgres.
+
+To copy rows into Railway Postgres, set a Postgres URL in the shell without committing it:
+
+```text
+SQLITE_PATH=/path/to/sigma.db \
+POSTGRES_MIGRATION_URL=<railway-postgres-url> \
+npm run db:migrate:postgres
+```
+
+The script creates the Postgres schema, upserts rows from all current Sigma tables, and verifies row counts. Use `--truncate` only when intentionally replacing all destination table rows.
+
+This migration command prepares the data layer. It does not switch `sigma-api` to Postgres yet; the runtime still reads SQLite through `DB_PATH`.
+
 ## `sigma-dashboard` Variables
 
 Required:
