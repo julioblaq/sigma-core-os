@@ -96,6 +96,10 @@ function defaultTtsModel(provider: VoiceProvider): string {
   return provider === 'openrouter' ? 'microsoft/mai-voice-2' : 'gpt-4o-mini-tts';
 }
 
+function defaultTtsVoice(provider: VoiceProvider): string {
+  return provider === 'openrouter' ? 'en-US-Harper:MAI-Voice-2' : 'nova';
+}
+
 function readTimeoutMs(): number {
   const parsed = Number(process.env.VOICE_TIMEOUT_MS ?? '30000');
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30000;
@@ -109,7 +113,7 @@ function buildConfig(providerOverride?: VoiceProvider): VoiceConfig & { apiKey: 
     baseUrl: process.env[`VOICE_${provider.toUpperCase()}_BASE_URL`] ?? readBaseUrl(provider),
     sttModel: process.env.VOICE_STT_MODEL ?? defaultSttModel(provider),
     ttsModel: process.env.VOICE_TTS_MODEL ?? defaultTtsModel(provider),
-    ttsVoice: process.env.VOICE_TTS_VOICE ?? 'nova',
+    ttsVoice: process.env.VOICE_TTS_VOICE ?? defaultTtsVoice(provider),
     ttsFormat: process.env.VOICE_TTS_FORMAT ?? 'mp3',
     timeoutMs: readTimeoutMs(),
     apiKeySet: apiKey.length > 0,

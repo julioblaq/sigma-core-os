@@ -46,7 +46,7 @@ VOICE_PROVIDER=openrouter
 OPENROUTER_API_KEY=<set in Railway>
 VOICE_STT_MODEL=microsoft/mai-transcribe-1.5
 VOICE_TTS_MODEL=microsoft/mai-voice-2
-VOICE_TTS_VOICE=nova
+VOICE_TTS_VOICE=en-US-Harper:MAI-Voice-2
 VOICE_TTS_FORMAT=mp3
 VOICE_TIMEOUT_MS=30000
 ```

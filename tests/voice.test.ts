@@ -41,7 +41,7 @@ describe('voice config', () => {
     assert.equal(cfg.baseUrl, 'https://openrouter.ai/api/v1');
     assert.equal(cfg.sttModel, 'microsoft/mai-transcribe-1.5');
     assert.equal(cfg.ttsModel, 'microsoft/mai-voice-2');
-    assert.equal(cfg.ttsVoice, 'nova');
+    assert.equal(cfg.ttsVoice, 'en-US-Harper:MAI-Voice-2');
     assert.equal(cfg.apiKeySet, true);
     assert.ok(!('apiKey' in cfg));
   });
@@ -129,10 +129,10 @@ describe('synthesizeSpeech', () => {
     assert.equal(result.mimeType, 'audio/mpeg');
     assert.equal(result.provider, 'openrouter');
     assert.equal(result.model, 'microsoft/mai-voice-2');
-    assert.equal(result.voice, 'nova');
+    assert.equal(result.voice, 'en-US-Harper:MAI-Voice-2');
     assert.deepEqual(capturedBody, {
       model: 'microsoft/mai-voice-2',
-      voice: 'nova',
+      voice: 'en-US-Harper:MAI-Voice-2',
       input: 'Ready for approval.',
       response_format: 'mp3',
     });
