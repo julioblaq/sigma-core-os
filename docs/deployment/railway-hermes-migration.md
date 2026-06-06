@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-06
-Status: Draft migration plan, documentation-only.
+Status: Audited; Railway service shell created, deployment pending start-command and secret configuration.
 
 ## Objective
 
@@ -22,6 +22,16 @@ Hermes already has its own packaging and container assets:
 - `/Users/jerryhicksjr/.hermes/hermes-agent/setup.py`
 - `/Users/jerryhicksjr/.hermes/hermes-agent/package.json`
 - `/Users/jerryhicksjr/.hermes/hermes-agent/Dockerfile`
+
+The Hermes package audit on 2026-06-06 found:
+
+- Python package: `hermes-agent` version `0.15.0`
+- Runtime Python: `>=3.11`
+- Container base: Debian with Python, Node 22, uv, Playwright, docker CLI, and s6-overlay
+- Runtime home in Dockerfile: `HERMES_HOME=/opt/data`
+- Runtime volume in Dockerfile: `/opt/data`
+- Docker runtime drops supervised services to the `hermes` user after s6 setup
+- `.dockerignore` excludes `.env`, `node_modules`, venvs, git state, and runtime data
 
 The active macOS LaunchAgents are:
 
@@ -60,13 +70,31 @@ Suggested Railway service:
 
 - `hermes-agent`
 
+Railway service created:
+
+```text
+Project: sigma-core-os
+Environment: production
+Service: hermes-agent
+Service ID: 2d1eff0b-ed39-4683-b2a1-129313ad9cee
+Deployment: not deployed yet
+```
+
 Candidate command:
 
 ```text
 python -m hermes_cli.main gateway run --replace
 ```
 
-The exact command should be confirmed against the existing Hermes Dockerfile and s6-overlay service layout before deployment. Prefer deploying Hermes from the Hermes package/repository rather than copying Hermes runtime files into Sigma Core OS.
+For the existing Hermes Dockerfile, the Railway start command should be:
+
+```text
+gateway run --replace
+```
+
+Railway start-command behavior matters here: for Dockerfile deployments, Railway defaults to the image `ENTRYPOINT` and `CMD`. The Hermes Dockerfile has the right entrypoint, but its empty `CMD` routes to the base `hermes` command. The service should not be deployed until Railway service settings override the start command to `gateway run --replace`, or the Hermes deployment source gets a dedicated Railway config.
+
+Prefer deploying Hermes from the Hermes package/repository rather than copying Hermes runtime files into Sigma Core OS.
 
 ## Required Railway Variables
 
@@ -94,23 +122,23 @@ If Hermes requires persistent state, back that path with a Railway volume.
 
 Before deployment, inspect Hermes without printing secret values:
 
-- Python version and package manager
-- `pyproject.toml`, `requirements.txt`, or equivalent dependency source
-- CLI import path for `hermes_cli.main`
+- Python version and package manager: done
+- `pyproject.toml`, `requirements.txt`, or equivalent dependency source: done
+- CLI import path for `hermes_cli.main`: done
 - Required environment variable names
 - Required profile files under `HERMES_HOME`
 - Files that must persist across restarts
-- Whether the default gateway uses local sockets, localhost services, GUI apps, or local Mac file paths
-- Whether any profile references OpenD, Moomoo, Tradovate, Ghost, browser sessions, or broker desktop apps
+- Whether the default gateway uses local sockets, localhost services, GUI apps, or local Mac file paths: still needs config-level review
+- Whether any profile references OpenD, Moomoo, Tradovate, Ghost, browser sessions, or broker desktop apps: trading profile remains local
 
 ## Deployment Steps
 
-1. Create Railway service `hermes-agent`.
+1. Create Railway service `hermes-agent`. Done.
 2. Configure build source from the Hermes package or a dedicated deployment wrapper.
-3. Configure start command:
+3. Configure start command in Railway service settings:
 
    ```text
-   python -m hermes_cli.main gateway run --replace
+   gateway run --replace
    ```
 
 4. Add Railway variables.
@@ -123,10 +151,10 @@ Before deployment, inspect Hermes without printing secret values:
 
 ## Validation Checklist
 
-- [ ] Hermes dependencies identified
-- [ ] Hermes start command confirmed
+- [x] Hermes dependencies identified
+- [x] Hermes start command confirmed
 - [ ] Secret variable names documented without values
-- [ ] Railway service created
+- [x] Railway service created
 - [ ] Railway variables configured
 - [ ] Persistent state decision made for `HERMES_HOME`
 - [ ] Default gateway starts on Railway
