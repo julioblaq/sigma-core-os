@@ -8,4 +8,4 @@ sandbox_dir="${SIGMA_SANDBOX_PATH:-/data/sandbox}"
 mkdir -p "$data_dir" "$sandbox_dir"
 chown -R node:node "$data_dir" "$sandbox_dir" 2>/dev/null || true
 
-exec su -s /bin/sh node -c 'exec "$@"' -- "$@"
+exec gosu node "$@"

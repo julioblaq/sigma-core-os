@@ -3,7 +3,10 @@ FROM node:22-slim
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends gosu && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm ci
 
 COPY tsconfig.json ./
 COPY apps/api ./apps/api

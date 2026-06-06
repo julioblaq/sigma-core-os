@@ -109,7 +109,7 @@ DB_PATH=/data/sigma.db
 SIGMA_SANDBOX_PATH=/data/sandbox
 ```
 
-The API image uses `deploy/railway/sigma-api-entrypoint.sh` to prepare the mounted volume path, then starts the API as the `node` user. This keeps the first cloud move small. Keep `sigma-api` single-replica while SQLite is active. PostgreSQL should replace SQLite before multi-replica production traffic.
+The API image uses `deploy/railway/sigma-api-entrypoint.sh` to prepare the mounted volume path, then uses `gosu` to start the API as the `node` user. This keeps the first cloud move small. Keep `sigma-api` single-replica while SQLite is active. PostgreSQL should replace SQLite before multi-replica production traffic.
 
 ## Variables
 

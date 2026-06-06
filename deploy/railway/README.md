@@ -55,7 +55,7 @@ HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
 ```
 
-The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then drops execution to the `node` user before launching the API.
+The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then uses `gosu` to drop execution to the `node` user before launching the API.
 
 Keep `sigma-api` at one replica while SQLite is the production store. Move to PostgreSQL before multi-replica traffic.
 
