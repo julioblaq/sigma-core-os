@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-06
-Status: Deployment-prep runbook.
+Status: Initial Railway cutover completed for Sigma API and dashboard.
 
 ## Goal
 
@@ -71,6 +71,24 @@ Before deployment, confirm the default profile does not require local GUI sessio
 
 ## Railway Configuration
 
+Railway project:
+
+```text
+Project: sigma-core-os
+Project ID: 4337cbdb-9569-4b30-9cf1-3212fee26eed
+Environment: production
+```
+
+Live services:
+
+| Service | Status | Public URL |
+|---|---|---|
+| `sigma-api` | Deployed | `https://sigma-api-production-b005.up.railway.app` |
+| `sigma-dashboard` | Deployed | `https://sigma-dashboard-production-a7a7.up.railway.app` |
+| `hermes-agent` | Service shell only | Not deployed |
+| `agent-worker` | Service shell only | Not deployed |
+| `trading-middleware-cloud` | Service shell only | Not deployed |
+
 Create separate Railway services from the same GitHub repository for Sigma:
 
 | Service | Source | Dockerfile variable |
@@ -78,13 +96,20 @@ Create separate Railway services from the same GitHub repository for Sigma:
 | `sigma-api` | Sigma Core OS repo root | `RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-api.Dockerfile` |
 | `sigma-dashboard` | Sigma Core OS repo root | `RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-dashboard.Dockerfile` |
 
-Attach a Railway volume to `sigma-api` at:
+A Railway volume is attached to `sigma-api` at:
 
 ```text
 /data
 ```
 
-Set:
+The current live `sigma-api` deployment temporarily uses:
+
+```text
+DB_PATH=/tmp/sigma.db
+SIGMA_SANDBOX_PATH=/tmp/sandbox
+```
+
+This keeps the API online with the non-root container while the Railway volume mount ownership issue is fixed. The intended persistent setting remains:
 
 ```text
 DB_PATH=/data/sigma.db
@@ -99,9 +124,9 @@ This keeps the first cloud move small. PostgreSQL should still replace SQLite be
 
 ```text
 PORT=3001
-DB_PATH=/data/sigma.db
-SIGMA_SANDBOX_PATH=/data/sandbox
-DASHBOARD_ORIGIN=https://<sigma-dashboard>.up.railway.app
+DB_PATH=/tmp/sigma.db
+SIGMA_SANDBOX_PATH=/tmp/sandbox
+DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=<set in Railway>
@@ -112,7 +137,7 @@ LLM_TIMEOUT_MS=30000
 
 ```text
 PORT=3000
-NEXT_PUBLIC_API_URL=https://<sigma-api>.up.railway.app
+NEXT_PUBLIC_API_URL=https://sigma-api-production-b005.up.railway.app
 ```
 
 ### `hermes-agent`
@@ -169,12 +194,31 @@ Expected response:
 }
 ```
 
+Observed live response on 2026-06-06:
+
+```text
+HTTP 200
+{"status":"ok","service":"sigma-core-os","version":"0.8.0"}
+```
+
+The CORS response allows:
+
+```text
+https://sigma-dashboard-production-a7a7.up.railway.app
+```
+
 After deploying `sigma-dashboard`:
 
 - Load dashboard Railway URL.
 - Confirm login page renders.
 - Confirm dashboard API proxy points at `sigma-api`.
 - Confirm CORS allows the dashboard origin.
+
+Observed live dashboard response on 2026-06-06:
+
+```text
+GET /approvals -> HTTP 200
+```
 
 ## Safety Rules
 
@@ -190,8 +234,15 @@ After deploying `sigma-dashboard`:
 Today is successful when:
 
 - Railway Dockerfiles exist.
-- Sigma API and dashboard have deploy instructions.
+- Sigma API and dashboard are deployed on Railway.
 - Tests pass with isolated DB.
 - Hermes default gateway has a documented cloud path.
 - Hermes trading profile remains local.
 - A PR can be opened with deployment prep and docs.
+
+## Open Cloud Follow-Ups
+
+- Fix persistent `/data` volume ownership for the non-root `sigma-api` container.
+- Provision Railway PostgreSQL and Redis once the current database add authorization issue is resolved.
+- Add real secrets through Railway variables, not git or chat.
+- Deploy Hermes only after the default profile audit confirms it has no local-only broker, GUI, MFA, OpenD, or LAN dependencies.

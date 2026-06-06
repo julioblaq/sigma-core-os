@@ -8,7 +8,7 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 
 | Railway service | Dockerfile path | Notes |
 |---|---|---|
-| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers, SQLite-backed state on `/data` for the first migration pass. |
+| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Current live deployment uses `/tmp/sigma.db` until persistent storage is fixed. |
 | `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. |
 
 ## Railway Setup
@@ -33,16 +33,16 @@ Required or recommended:
 
 ```text
 PORT=3001
-DB_PATH=/data/sigma.db
-SIGMA_SANDBOX_PATH=/data/sandbox
-DASHBOARD_ORIGIN=https://<sigma-dashboard>.up.railway.app
+DB_PATH=/tmp/sigma.db
+SIGMA_SANDBOX_PATH=/tmp/sandbox
+DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=<set in Railway>
 LLM_TIMEOUT_MS=30000
 ```
 
-Attach a Railway volume mounted at `/data` before using SQLite for production-like traffic.
+The intended persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The current non-root container cannot write to that mounted volume yet, so do not treat `/tmp/sigma.db` as durable production memory.
 
 ## `sigma-dashboard` Variables
 
@@ -50,7 +50,14 @@ Required:
 
 ```text
 PORT=3000
-NEXT_PUBLIC_API_URL=https://<sigma-api>.up.railway.app
+NEXT_PUBLIC_API_URL=https://sigma-api-production-b005.up.railway.app
+```
+
+## Live Railway URLs
+
+```text
+sigma-api: https://sigma-api-production-b005.up.railway.app
+sigma-dashboard: https://sigma-dashboard-production-a7a7.up.railway.app
 ```
 
 ## First Cloud Cutover Rule
