@@ -9,7 +9,7 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 | Railway service | Dockerfile path | Notes |
 |---|---|---|
 | `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Current live deployment uses `/tmp/sigma.db` until persistent storage is fixed. |
-| `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. |
+| `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
 
 ## Railway Setup
 
@@ -73,6 +73,30 @@ sigma-api: https://sigma-api-production-b005.up.railway.app
 sigma-dashboard: https://sigma-dashboard-production-a7a7.up.railway.app
 hermes-agent: https://hermes-agent-production-62ee.up.railway.app
 ```
+
+## Hermes Approval Flow
+
+`sigma-api` connects to the secured Railway `hermes-agent` service through server-side variables only. The dashboard never receives `HERMES_API_KEY`.
+
+Approved cloud action surface:
+
+```text
+GET  /v1/hermes/config
+GET  /v1/hermes/status
+GET  /v1/hermes/models
+POST /v1/hermes/draft-chat
+POST /v1/hermes/dispatch-chat
+```
+
+Dashboard surface:
+
+```text
+/hermes
+```
+
+`POST /v1/hermes/draft-chat` creates a `sigma-hermes` approval with action `hermes_chat`. `POST /v1/hermes/dispatch-chat` sends the prompt to Hermes only after that approval has status `approved`.
+
+This is intentionally limited to non-streaming `/v1/chat/completions`. Do not expose the broader Hermes run/tool execution surface until tool permissions, audit logging, idempotency, and rollback handling are reviewed.
 
 ## First Cloud Cutover Rule
 

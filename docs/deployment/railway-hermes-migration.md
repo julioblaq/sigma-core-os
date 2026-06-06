@@ -170,6 +170,8 @@ Before deployment, inspect Hermes without printing secret values:
 - [x] Railway variables configured
 - [ ] Persistent state decision made for `HERMES_HOME`
 - [x] Default gateway starts on Railway
+- [x] Sigma API can reach Hermes health and model endpoints
+- [x] Sigma API exposes approval-gated Hermes chat dispatch
 - [ ] Logs remain healthy through restart
 - [x] No local terminal required
 - [ ] 24 hour continuous runtime completed
@@ -202,6 +204,22 @@ HTTP 200
 model: hermes-agent
 ```
 
+Sigma API can now queue a Hermes chat prompt as a pending approval and dispatch it only after approval:
+
+```text
+POST /v1/hermes/draft-chat
+POST /v1/approvals/:id
+POST /v1/hermes/dispatch-chat
+```
+
+Dashboard surface:
+
+```text
+https://sigma-dashboard-production-a7a7.up.railway.app/hermes
+```
+
+This does not enable broad Hermes `/v1/runs` execution, trading actions, local gateway access, or broker-connected tools. It is a narrow chat-completion bridge for approved cloud orchestration prompts.
+
 ## Rollback Plan
 
 If Railway deployment fails:
@@ -221,6 +239,7 @@ Do not disable the local LaunchAgent until Railway has completed the 24 hour suc
 - Prefer Tailscale or an SSH tunnel for any private local connectivity that must remain available to cloud services.
 - Keep trading credentials, webhook secrets, and provider API keys in Railway variables.
 - Do not copy `.env` values into docs, commits, PR descriptions, or chat.
+- Keep cloud Hermes dispatch behind Sigma approvals until idempotent execution state and action-level audit are added.
 
 ## Open Questions
 

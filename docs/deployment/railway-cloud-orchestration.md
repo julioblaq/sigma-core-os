@@ -34,7 +34,7 @@ Codex should not become an autonomous trading executor. Production changes, brok
 | Sigma Dashboard | Human review and operational UI | Railway `sigma-dashboard` service. |
 | Sigma Bot | Trade-plan proposal handler | Runs in-process with `sigma-api` until queue workers exist. |
 | Sigma Dev | Docs/code artifact proposal handler | Runs in-process with `sigma-api` until queue workers exist. |
-| Hermes default gateway | Local gateway process retained during stability window | Railway `hermes-agent` secured API server. |
+| Hermes default gateway | Local gateway process retained during stability window | Railway `hermes-agent` secured API server, reached through Sigma approval gates. |
 | Hermes trading gateway | Trading-profile gateway | Local only until broker, OpenD, MFA, and LAN needs are proven safe. |
 | Moomoo OpenD | Local broker gateway | Local only. Never expose publicly. |
 
@@ -261,6 +261,22 @@ GET /v1/hermes/status -> HTTP 200
 GET /v1/hermes/models -> HTTP 200, model hermes-agent
 ```
 
+After adding approval-gated Hermes chat:
+
+```text
+POST /v1/hermes/draft-chat -> HTTP 202, pending sigma-hermes approval
+POST /v1/approvals/:id -> HTTP 200, approved
+POST /v1/hermes/dispatch-chat -> HTTP 200, Hermes response
+```
+
+Dashboard route:
+
+```text
+/hermes
+```
+
+The first Hermes action surface is deliberately narrow. Sigma sends only non-streaming chat completion prompts to Hermes after a human approval is approved. Do not enable direct Hermes runs, tool calls, trading actions, or broker-connected behavior in Railway without a separate approval design.
+
 ## Safety Rules
 
 - Do not expose OpenD publicly.
@@ -269,6 +285,8 @@ GET /v1/hermes/models -> HTTP 200, model hermes-agent
 - Do not deploy Hermes trading profile until explicitly approved.
 - Do not commit `.env`, SQLite production data, or profile secrets.
 - Keep live broker execution disabled unless a future approved design adds it.
+- Keep Hermes cloud dispatch behind Sigma approvals.
+- Keep full Hermes run/tool execution disabled until the review layer records tool scope and dispatch state.
 
 ## Today Finish Line
 
@@ -278,6 +296,8 @@ Today is successful when:
 - Sigma API and dashboard are deployed on Railway.
 - Tests pass with isolated DB.
 - Hermes default API server is deployed on Railway.
+- Sigma API can queue and dispatch approved Hermes chat prompts.
+- Sigma dashboard exposes the Hermes approval page.
 - Hermes trading profile remains local.
 - A PR can be opened with deployment prep and docs.
 
@@ -288,3 +308,4 @@ Today is successful when:
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.
 - Decide whether `HERMES_HOME=/opt/data` needs a Railway volume before relying on long-term Hermes session memory.
+- Add idempotent dispatch tracking before using Hermes approvals for non-chat side effects.

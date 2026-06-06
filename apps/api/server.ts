@@ -39,6 +39,8 @@
 // GET  /v1/hermes/config
 // GET  /v1/hermes/status
 // GET  /v1/hermes/models
+// POST /v1/hermes/draft-chat
+// POST /v1/hermes/dispatch-chat
 // GET  /health
 //
 // v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
@@ -122,6 +124,7 @@ import {
   getHermesConfig,
   getHermesStatus,
   listHermesModels,
+  sendHermesChat,
   HermesConfigError,
   HermesProviderError,
 } from '../../core/hermes/index.js';
@@ -495,6 +498,89 @@ app.get('/v1/hermes/models', async (req, reply) => {
     return hermesError(reply, err);
   }
 });
+
+app.post<{
+  Body: {
+    prompt: string;
+    systemPrompt?: string;
+    sessionId?: string;
+    sessionKey?: string;
+    submittedBy?: string;
+  };
+}>(
+  '/v1/hermes/draft-chat',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['prompt'],
+        properties: {
+          prompt: { type: 'string' },
+          systemPrompt: { type: 'string' },
+          sessionId: { type: 'string' },
+          sessionKey: { type: 'string' },
+          submittedBy: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const prompt = req.body.prompt.trim();
+    if (!prompt) return reply.code(400).send({ error: 'prompt is required' });
+
+    const submittedBy = req.body.submittedBy ?? getUserId(req as Parameters<typeof getUserId>[0]);
+    const approval = requestApproval(
+      'sigma-hermes',
+      'hermes_chat',
+      `Hermes chat: ${prompt.slice(0, 96)}`,
+      {
+        prompt,
+        systemPrompt: req.body.systemPrompt,
+        sessionId: req.body.sessionId,
+        sessionKey: req.body.sessionKey,
+        submittedBy,
+        createdAt: new Date().toISOString(),
+      },
+    );
+    return reply.code(202).send({ approval });
+  },
+);
+
+app.post<{ Body: { approvalId: string } }>(
+  '/v1/hermes/dispatch-chat',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['approvalId'],
+        properties: { approvalId: { type: 'string' } },
+      },
+    },
+  },
+  async (req, reply) => {
+    const approval = getApproval(req.body.approvalId);
+    if (!approval) return reply.code(404).send({ error: 'approval not found' });
+    if (approval.agent !== 'sigma-hermes' || approval.action !== 'hermes_chat') {
+      return reply.code(400).send({ error: 'approval is not a Hermes chat approval' });
+    }
+    if (approval.status !== 'approved') {
+      return reply.code(409).send({ error: `approval must be approved before dispatch; current status is ${approval.status}` });
+    }
+
+    const payload = approval.payload;
+    const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
+    const systemPrompt = typeof payload.systemPrompt === 'string' ? payload.systemPrompt : undefined;
+    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined;
+    const sessionKey = typeof payload.sessionKey === 'string' ? payload.sessionKey : undefined;
+
+    try {
+      const result = await sendHermesChat({ prompt, systemPrompt, sessionId, sessionKey });
+      return reply.code(200).send({ approvalId: approval.id, result });
+    } catch (err) {
+      return hermesError(reply, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // GitHub

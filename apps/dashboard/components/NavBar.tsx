@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 const LINKS = [
   { href: '/mindlyft', label: 'MindLyft' },
   { href: '/voice', label: 'Voice' },
+  { href: '/hermes', label: 'Hermes' },
   { href: '/approvals', label: 'Approvals' },
   { href: '/log', label: 'Runtime Log' },
   { href: '/memory', label: 'Memory' },

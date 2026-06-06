@@ -23,6 +23,26 @@ export interface HermesModel {
   ownedBy?: string;
 }
 
+export interface HermesChatRequest {
+  prompt: string;
+  systemPrompt?: string;
+  sessionId?: string;
+  sessionKey?: string;
+}
+
+export interface HermesChatResult {
+  content: string;
+  model: string;
+  sessionId?: string;
+  finishReason?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  latencyMs: number;
+}
+
 export class HermesConfigError extends Error {
   constructor(message: string) {
     super(message);
@@ -156,4 +176,72 @@ export async function listHermesModels(): Promise<{ models: HermesModel[]; laten
     : [];
 
   return { models, latencyMs };
+}
+
+export async function sendHermesChat(req: HermesChatRequest): Promise<HermesChatResult> {
+  const cfg = buildConfig();
+  requireBaseUrl(cfg);
+  requireApiKey(cfg);
+
+  const prompt = req.prompt.trim();
+  if (!prompt) throw new HermesConfigError('Hermes prompt is required');
+
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  const systemPrompt = req.systemPrompt?.trim();
+  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+  messages.push({ role: 'user', content: prompt });
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${cfg.apiKey}`,
+  };
+  if (req.sessionId?.trim()) headers['X-Hermes-Session-Id'] = req.sessionId.trim();
+  if (req.sessionKey?.trim()) headers['X-Hermes-Session-Key'] = req.sessionKey.trim();
+
+  const { response, latencyMs } = await fetchWithTimeout(
+    `${cfg.baseUrl}/v1/chat/completions`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: cfg.model,
+        stream: false,
+        messages,
+      }),
+    },
+    cfg.timeoutMs,
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new HermesProviderError(`Hermes chat failed: HTTP ${response.status} ${text}`, response.status);
+  }
+
+  const payload = await response.json() as {
+    model?: unknown;
+    choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>;
+    usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown };
+  };
+  const first = payload.choices?.[0];
+  const content = typeof first?.message?.content === 'string' ? first.message.content : '';
+  if (!content.trim()) throw new HermesProviderError('Hermes chat response did not include content', 502);
+
+  const sessionId = response.headers.get('X-Hermes-Session-Id') ?? undefined;
+  const usage = payload.usage
+    ? {
+        promptTokens: typeof payload.usage.prompt_tokens === 'number' ? payload.usage.prompt_tokens : 0,
+        completionTokens: typeof payload.usage.completion_tokens === 'number' ? payload.usage.completion_tokens : 0,
+        totalTokens: typeof payload.usage.total_tokens === 'number' ? payload.usage.total_tokens : 0,
+      }
+    : undefined;
+
+  return {
+    content: content.trim(),
+    model: typeof payload.model === 'string' ? payload.model : cfg.model,
+    sessionId,
+    finishReason: typeof first?.finish_reason === 'string' ? first.finish_reason : undefined,
+    usage,
+    latencyMs,
+  };
 }

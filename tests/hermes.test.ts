@@ -8,6 +8,7 @@ import {
   getHermesConfig,
   getHermesStatus,
   listHermesModels,
+  sendHermesChat,
   HermesConfigError,
   HermesProviderError,
 } from '../core/hermes/index.js';
@@ -103,6 +104,69 @@ describe('Hermes models', () => {
     await assert.rejects(
       () => listHermesModels(),
       (err: unknown) => err instanceof HermesProviderError && err.status === 401,
+    );
+  });
+});
+
+describe('Hermes chat', () => {
+  it('sends non-streaming chat completions with session headers', async () => {
+    process.env.HERMES_MODEL = 'hermes-agent';
+    let capturedUrl = '';
+    let capturedHeaders: HeadersInit | undefined;
+    let capturedBody = '';
+
+    mockFetch(async (url, init) => {
+      capturedUrl = String(url);
+      capturedHeaders = init?.headers;
+      capturedBody = String(init?.body ?? '');
+      return new Response(JSON.stringify({
+        model: 'hermes-agent',
+        choices: [{ message: { content: 'Connected.' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 10, completion_tokens: 2, total_tokens: 12 },
+      }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Hermes-Session-Id': 'session-123',
+        },
+      });
+    });
+
+    const result = await sendHermesChat({
+      prompt: 'Say connected.',
+      systemPrompt: 'Be concise.',
+      sessionId: 'session-input',
+      sessionKey: 'session-key',
+    });
+
+    assert.equal(capturedUrl, 'https://hermes.example.com/v1/chat/completions');
+    assert.equal((capturedHeaders as Record<string, string>).Authorization, 'Bearer hermes-test-key');
+    assert.equal((capturedHeaders as Record<string, string>)['X-Hermes-Session-Id'], 'session-input');
+    assert.equal((capturedHeaders as Record<string, string>)['X-Hermes-Session-Key'], 'session-key');
+    assert.deepEqual(JSON.parse(capturedBody), {
+      model: 'hermes-agent',
+      stream: false,
+      messages: [
+        { role: 'system', content: 'Be concise.' },
+        { role: 'user', content: 'Say connected.' },
+      ],
+    });
+    assert.equal(result.content, 'Connected.');
+    assert.equal(result.model, 'hermes-agent');
+    assert.equal(result.sessionId, 'session-123');
+    assert.equal(result.finishReason, 'stop');
+    assert.deepEqual(result.usage, { promptTokens: 10, completionTokens: 2, totalTokens: 12 });
+  });
+
+  it('requires a non-empty prompt', async () => {
+    await assert.rejects(() => sendHermesChat({ prompt: '   ' }), HermesConfigError);
+  });
+
+  it('surfaces Hermes chat provider errors', async () => {
+    mockFetch(async () => new Response('unavailable', { status: 503 }));
+    await assert.rejects(
+      () => sendHermesChat({ prompt: 'hello' }),
+      (err: unknown) => err instanceof HermesProviderError && err.status === 503,
     );
   });
 });
