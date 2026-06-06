@@ -99,6 +99,15 @@ PORT=8642
 
 `API_SERVER_KEY` is set in Railway and is required for model/API access. The public `/health` endpoint is intentionally available for uptime checks.
 
+The cloud default runtime model is selected with non-secret Railway variables:
+
+```text
+HERMES_INFERENCE_PROVIDER=openrouter
+HERMES_INFERENCE_MODEL=google/gemini-3-flash-preview
+```
+
+Hermes package commit `a8cd5f37f` makes the gateway runtime honor `HERMES_INFERENCE_MODEL` and mirrors these selectors into `config.yaml` at container boot.
+
 Prefer deploying Hermes from the Hermes package/repository rather than copying Hermes runtime files into Sigma Core OS.
 
 ## Required Railway Variables
@@ -110,6 +119,8 @@ Known or likely variables:
 - `HERMES_HOME`
 - `HERMES_UID`
 - `HERMES_GID`
+- `HERMES_INFERENCE_PROVIDER`
+- `HERMES_INFERENCE_MODEL`
 - `API_SERVER_ENABLED`
 - `API_SERVER_HOST`
 - `API_SERVER_PORT`
@@ -210,6 +221,15 @@ Sigma API can now queue a Hermes chat prompt as a pending approval and dispatch 
 POST /v1/hermes/draft-chat
 POST /v1/approvals/:id
 POST /v1/hermes/dispatch-chat
+```
+
+Observed live result on 2026-06-06:
+
+```text
+POST /v1/hermes/draft-chat -> HTTP 202
+POST /v1/approvals/:id -> HTTP 200, approved
+POST /v1/hermes/dispatch-chat -> HTTP 200
+Hermes response: "Hermes approval bridge connected."
 ```
 
 Dashboard surface:
