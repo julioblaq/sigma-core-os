@@ -32,11 +32,15 @@
 // GET  /v1/journal/:id
 // POST /v1/journal/:id/close
 // GET  /v1/workspaces/:id/journal/summary
+// GET  /v1/voice/config
+// POST /v1/voice/transcribe
+// POST /v1/voice/speech
+// POST /v1/voice/draft-task
 // GET  /health
 //
 // v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import { randomUUID } from 'crypto';
 import { route } from '../../core/router/index.js';
 import { listPending, getApproval, resolveApproval, listAll, requestApproval } from '../../core/policies/index.js';
@@ -103,6 +107,14 @@ import {
   type GitHubIssue,
   type GitHubPullRequest,
 } from '../../core/github/index.js';
+import {
+  getVoiceConfig,
+  transcribeAudio,
+  synthesizeSpeech,
+  VoiceConfigError,
+  VoiceProviderError,
+  type VoiceProvider,
+} from '../../core/voice/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -315,6 +327,131 @@ app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
   const namespaces = ['sigma-bot', 'sigma-dev', 'sigma-risk'];
   return namespaces.flatMap(n => memList(n));
 });
+
+// ---------------------------------------------------------------------------
+// Voice
+// ---------------------------------------------------------------------------
+
+function voiceError(reply: FastifyReply, err: unknown) {
+  if (err instanceof VoiceConfigError) {
+    return reply.code(400).send({ error: err.message, code: 'VOICE_CONFIG_ERROR' });
+  }
+  if (err instanceof VoiceProviderError) {
+    return reply.code(err.status >= 400 && err.status < 600 ? err.status : 502)
+      .send({ error: err.message, code: 'VOICE_PROVIDER_ERROR' });
+  }
+  throw err;
+}
+
+app.get<{ Querystring: { provider?: VoiceProvider } }>('/v1/voice/config', async (req, reply) => {
+  try {
+    return getVoiceConfig(req.query.provider);
+  } catch (err) {
+    return voiceError(reply, err);
+  }
+});
+
+app.post<{
+  Body: {
+    audioBase64: string;
+    mimeType?: string;
+    language?: string;
+    prompt?: string;
+    provider?: VoiceProvider;
+  };
+}>(
+  '/v1/voice/transcribe',
+  {
+    bodyLimit: 12 * 1024 * 1024,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['audioBase64'],
+        properties: {
+          audioBase64: { type: 'string' },
+          mimeType: { type: 'string' },
+          language: { type: 'string' },
+          prompt: { type: 'string' },
+          provider: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const result = await transcribeAudio(req.body);
+      return reply.code(200).send(result);
+    } catch (err) {
+      return voiceError(reply, err);
+    }
+  },
+);
+
+app.post<{
+  Body: { text: string; voice?: string; format?: string; provider?: VoiceProvider };
+}>(
+  '/v1/voice/speech',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['text'],
+        properties: {
+          text: { type: 'string' },
+          voice: { type: 'string' },
+          format: { type: 'string' },
+          provider: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const result = await synthesizeSpeech(req.body);
+      return reply.code(200).send(result);
+    } catch (err) {
+      return voiceError(reply, err);
+    }
+  },
+);
+
+app.post<{
+  Body: { transcript: string; taskType?: string; notes?: string };
+}>(
+  '/v1/voice/draft-task',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['transcript'],
+        properties: {
+          transcript: { type: 'string' },
+          taskType: { type: 'string' },
+          notes: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const transcript = req.body.transcript.trim();
+    if (!transcript) return reply.code(400).send({ error: 'transcript is required' });
+
+    const submittedBy = getUserId(req as Parameters<typeof getUserId>[0]);
+    const approval = requestApproval(
+      'sigma-voice',
+      'voice_task_draft',
+      `Voice task draft from ${submittedBy}`,
+      {
+        transcript,
+        taskType: req.body.taskType ?? 'voice_command',
+        notes: req.body.notes,
+        submittedBy,
+        createdAt: new Date().toISOString(),
+      },
+    );
+    return reply.code(202).send({ approval });
+  },
+);
 
 // ---------------------------------------------------------------------------
 // GitHub

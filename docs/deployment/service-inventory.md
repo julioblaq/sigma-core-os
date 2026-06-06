@@ -17,6 +17,10 @@ Deployment assets added for Railway:
 - `deploy/railway/README.md`
 - `.dockerignore`
 
+Voice deployment reference added:
+
+- `docs/deployment/sigma-voice-agent.md`
+
 Railway project created on 2026-06-06:
 
 ```text
@@ -37,6 +41,7 @@ Environment: production
 |---|---:|---|---|---|
 | Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. Currently uses `/tmp/sigma.db` until `/data` volume ownership is fixed or PostgreSQL is provisioned. |
 | Sigma Dashboard | Cloud Safe | `cd apps/dashboard && npm run start` | `apps/dashboard/package.json`, `apps/dashboard/next.config.mjs` | Deployed to Railway service `sigma-dashboard` at `https://sigma-dashboard-production-a7a7.up.railway.app`. `/approvals` renders with HTTP 200 and points at the Railway API URL. |
+| Sigma Voice Agent | Cloud Safe | `sigma-dashboard` mic UI + `sigma-api` voice routes | `apps/dashboard/app/voice/page.tsx`, `core/voice/index.ts`, `apps/api/server.ts` | Voice is an operator input layer. It transcribes audio, can synthesize replies, and queues approval-gated voice task drafts. It does not execute tasks or broker actions directly. |
 | Sigma Bot TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-bot/handler.ts`, `core/router/index.ts` | Currently runs in-process when API receives `trade_plan` tasks. Keep with API for first migration, or later split into `agent-worker` when a durable queue exists. |
 | Sigma Dev TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-dev/handler.ts`, `core/router/index.ts` | Currently in-process. Write actions are approval-gated and sandboxed. Cloud deployment needs `SIGMA_SANDBOX_PATH` pointed at an ephemeral or persistent Railway volume depending on intended artifact retention. |
 | LLM routing client | Cloud Safe | Imported by agent handlers | `core/llm/index.ts`, `integrations/litellm/README.md` | Uses hosted OpenAI/Anthropic/LiteLLM-compatible APIs when configured with environment variables. Local Ollama fallback is not cloud safe unless replaced with a hosted/private endpoint. |
@@ -117,6 +122,16 @@ Read by source code:
 - `LLM_<MODEL>_API_KEY`
 - `LLM_<MODEL>_TIMEOUT_MS`
 - `SIGMA_SANDBOX_PATH`
+- `VOICE_PROVIDER`
+- `VOICE_API_KEY`
+- `OPENROUTER_API_KEY`
+- `OPENAI_API_KEY`
+- `VOICE_BASE_URL`
+- `VOICE_STT_MODEL`
+- `VOICE_TTS_MODEL`
+- `VOICE_TTS_VOICE`
+- `VOICE_TTS_FORMAT`
+- `VOICE_TIMEOUT_MS`
 
 Local `.env` key scan found only:
 
@@ -206,3 +221,4 @@ The clean dependency install restored the missing `node_modules` files. The exis
 5. Keep agent handlers in-process until a durable queue exists.
 6. Keep OpenD, broker desktop software, MFA sessions, and Hermes trading profile local.
 7. Audit Hermes default gateway separately before deploying it to Railway.
+8. Keep voice commands approval-gated until Hermes and live execution boundaries are explicitly approved.

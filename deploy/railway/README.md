@@ -42,6 +42,13 @@ LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=<set in Railway>
 LLM_TIMEOUT_MS=30000
+VOICE_PROVIDER=openrouter
+OPENROUTER_API_KEY=<set in Railway>
+VOICE_STT_MODEL=microsoft/mai-transcribe-1.5
+VOICE_TTS_MODEL=microsoft/mai-voice-2
+VOICE_TTS_VOICE=nova
+VOICE_TTS_FORMAT=mp3
+VOICE_TIMEOUT_MS=30000
 ```
 
 The intended persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The current non-root container cannot write to that mounted volume yet, so do not treat `/tmp/sigma.db` as durable production memory.
