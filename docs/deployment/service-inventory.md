@@ -132,6 +132,10 @@ Read by source code:
 - `VOICE_TTS_VOICE`
 - `VOICE_TTS_FORMAT`
 - `VOICE_TIMEOUT_MS`
+- `HERMES_API_URL`
+- `HERMES_API_KEY`
+- `HERMES_MODEL`
+- `HERMES_TIMEOUT_MS`
 
 Local `.env` key scan found only:
 

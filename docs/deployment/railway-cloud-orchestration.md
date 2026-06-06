@@ -131,6 +131,17 @@ LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_API_KEY=<set in Railway>
 LLM_TIMEOUT_MS=30000
+VOICE_PROVIDER=openrouter
+OPENROUTER_API_KEY=<set in Railway>
+VOICE_STT_MODEL=microsoft/mai-transcribe-1.5
+VOICE_TTS_MODEL=microsoft/mai-voice-2
+VOICE_TTS_VOICE=en-US-Harper:MAI-Voice-2
+VOICE_TTS_FORMAT=mp3
+VOICE_TIMEOUT_MS=30000
+HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
+HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
+HERMES_MODEL=hermes-agent
+HERMES_TIMEOUT_MS=30000
 ```
 
 ### `sigma-dashboard`
@@ -180,9 +191,9 @@ Expected result:
 
 ```text
 typecheck passed
-219 tests passed
+232 tests passed
 0 failed
-dashboard build passed, 16 app routes generated
+dashboard build passed, 17 app routes generated
 ```
 
 After deploying `sigma-api`:
@@ -241,6 +252,13 @@ GET /health -> HTTP 200
 
 GET /v1/models without API key -> HTTP 401
 GET /v1/models with API_SERVER_KEY -> HTTP 200, model hermes-agent
+```
+
+After connecting `sigma-api` to `hermes-agent`:
+
+```text
+GET /v1/hermes/status -> HTTP 200
+GET /v1/hermes/models -> HTTP 200, model hermes-agent
 ```
 
 ## Safety Rules

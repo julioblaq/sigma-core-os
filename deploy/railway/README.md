@@ -49,6 +49,10 @@ VOICE_TTS_MODEL=microsoft/mai-voice-2
 VOICE_TTS_VOICE=en-US-Harper:MAI-Voice-2
 VOICE_TTS_FORMAT=mp3
 VOICE_TIMEOUT_MS=30000
+HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
+HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
+HERMES_MODEL=hermes-agent
+HERMES_TIMEOUT_MS=30000
 ```
 
 The intended persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The current non-root container cannot write to that mounted volume yet, so do not treat `/tmp/sigma.db` as durable production memory.
@@ -67,6 +71,7 @@ NEXT_PUBLIC_API_URL=https://sigma-api-production-b005.up.railway.app
 ```text
 sigma-api: https://sigma-api-production-b005.up.railway.app
 sigma-dashboard: https://sigma-dashboard-production-a7a7.up.railway.app
+hermes-agent: https://hermes-agent-production-62ee.up.railway.app
 ```
 
 ## First Cloud Cutover Rule

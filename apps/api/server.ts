@@ -36,6 +36,9 @@
 // POST /v1/voice/transcribe
 // POST /v1/voice/speech
 // POST /v1/voice/draft-task
+// GET  /v1/hermes/config
+// GET  /v1/hermes/status
+// GET  /v1/hermes/models
 // GET  /health
 //
 // v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
@@ -115,6 +118,13 @@ import {
   VoiceProviderError,
   type VoiceProvider,
 } from '../../core/voice/index.js';
+import {
+  getHermesConfig,
+  getHermesStatus,
+  listHermesModels,
+  HermesConfigError,
+  HermesProviderError,
+} from '../../core/hermes/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -452,6 +462,39 @@ app.post<{
     return reply.code(202).send({ approval });
   },
 );
+
+// ---------------------------------------------------------------------------
+// Hermes
+// ---------------------------------------------------------------------------
+
+function hermesError(reply: FastifyReply, err: unknown) {
+  if (err instanceof HermesConfigError) {
+    return reply.code(400).send({ error: err.message, code: 'HERMES_CONFIG_ERROR' });
+  }
+  if (err instanceof HermesProviderError) {
+    return reply.code(err.status >= 400 && err.status < 600 ? err.status : 502)
+      .send({ error: err.message, code: 'HERMES_PROVIDER_ERROR' });
+  }
+  throw err;
+}
+
+app.get('/v1/hermes/config', async (req, reply) => {
+  try {
+    return getHermesConfig();
+  } catch (err) {
+    return hermesError(reply, err);
+  }
+});
+
+app.get('/v1/hermes/status', async () => getHermesStatus());
+
+app.get('/v1/hermes/models', async (req, reply) => {
+  try {
+    return listHermesModels();
+  } catch (err) {
+    return hermesError(reply, err);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // GitHub

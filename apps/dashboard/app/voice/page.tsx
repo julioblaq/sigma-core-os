@@ -21,6 +21,26 @@ interface DraftResult {
   approval?: { id: string; status: string; action: string };
 }
 
+interface HermesConfig {
+  baseUrl: string;
+  model: string;
+  apiKeySet: boolean;
+}
+
+interface HermesStatus {
+  configured: boolean;
+  ok: boolean;
+  statusCode: number | null;
+  latencyMs: number;
+  platform?: string;
+  error?: string;
+}
+
+interface HermesModels {
+  models?: Array<{ id: string }>;
+  error?: string;
+}
+
 function tokenHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('sigma_token') : null;
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -50,12 +70,35 @@ export default function VoicePage() {
   const [busy, setBusy] = useState(false);
   const [draftId, setDraftId] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
+  const [hermesConfig, setHermesConfig] = useState<HermesConfig | null>(null);
+  const [hermesStatus, setHermesStatus] = useState<HermesStatus | null>(null);
+  const [hermesModel, setHermesModel] = useState('');
 
   useEffect(() => {
     fetch('/api/v1/voice/config', { headers: tokenHeaders() })
       .then(r => r.json())
       .then(setConfig)
       .catch(() => setStatus('voice config unavailable'));
+
+    Promise.all([
+      fetch('/api/v1/hermes/config', { headers: tokenHeaders() }).then(r => r.json()),
+      fetch('/api/v1/hermes/status', { headers: tokenHeaders() }).then(r => r.json()),
+      fetch('/api/v1/hermes/models', { headers: tokenHeaders() }).then(r => r.json()),
+    ])
+      .then(([cfg, health, modelPayload]: [HermesConfig, HermesStatus, HermesModels]) => {
+        setHermesConfig(cfg);
+        setHermesStatus(health);
+        setHermesModel(modelPayload.models?.[0]?.id ?? '');
+      })
+      .catch(() => {
+        setHermesStatus({
+          configured: false,
+          ok: false,
+          statusCode: null,
+          latencyMs: 0,
+          error: 'Hermes unavailable',
+        });
+      });
   }, []);
 
   async function startRecording() {
@@ -178,6 +221,30 @@ export default function VoicePage() {
       </div>
 
       <section className="sigma-panel p-4 space-y-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded border p-3" style={{ borderColor: 'var(--border)', background: 'rgba(255,255,255,0.03)' }}>
+            <div className="text-xs" style={{ color: 'var(--subtext)' }}>Hermes</div>
+            <div className="mt-1 mono text-sm" style={{ color: hermesStatus?.ok ? 'var(--green)' : 'var(--red)' }}>
+              {hermesStatus?.ok ? 'online' : 'offline'}
+            </div>
+          </div>
+          <div className="rounded border p-3" style={{ borderColor: 'var(--border)', background: 'rgba(255,255,255,0.03)' }}>
+            <div className="text-xs" style={{ color: 'var(--subtext)' }}>Model</div>
+            <div className="mt-1 mono text-sm" style={{ color: 'var(--text)' }}>
+              {hermesModel || hermesConfig?.model || 'unknown'}
+            </div>
+          </div>
+          <div className="rounded border p-3" style={{ borderColor: 'var(--border)', background: 'rgba(255,255,255,0.03)' }}>
+            <div className="text-xs" style={{ color: 'var(--subtext)' }}>Auth</div>
+            <div className="mt-1 mono text-sm" style={{ color: hermesConfig?.apiKeySet ? 'var(--green)' : 'var(--red)' }}>
+              {hermesConfig?.apiKeySet ? 'key:set' : 'key:missing'}
+            </div>
+          </div>
+        </div>
+        {hermesStatus?.error && (
+          <div className="mono text-xs" style={{ color: 'var(--red)' }}>{hermesStatus.error}</div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={recording ? stopRecording : startRecording}
