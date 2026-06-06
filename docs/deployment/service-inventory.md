@@ -203,7 +203,7 @@ sigma-dashboard -> SUCCESS
 GET https://sigma-dashboard-production-a7a7.up.railway.app/approvals -> HTTP 200
 ```
 
-Railway managed PostgreSQL and Redis were not provisioned in this pass because `railway add --database postgres` and `railway add --database redis` returned `Unauthorized` even after CLI login. Retried on 2026-06-06 after the `/data` persistence fix; `railway add --database postgres --json` still returned `Unauthorized`. Revisit from the Railway dashboard, reauthenticate the CLI, or refresh account/project permissions.
+Railway managed PostgreSQL and Redis were not provisioned in this pass because `railway add --database postgres` and `railway add --database redis` returned `Unauthorized` even after CLI login. Retried on 2026-06-06 after the `/data` persistence fix; both `railway add --database postgres --json` and `railway add --database redis --json` still returned `Unauthorized`. Revisit from the Railway dashboard, reauthenticate the CLI, or refresh account/project permissions.
 
 The `sigma-api` Railway volume at `/data` is now active. Deployment `d46ed713-75d8-4434-a5de-3fc219fac9a9` opened `/data/sigma.db`, passed the public `/health` check, and read back a smoke-test approval after redeploy. This proves the current SQLite database survives container replacement.
 
