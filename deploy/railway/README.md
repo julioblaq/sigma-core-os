@@ -27,6 +27,8 @@ or:
 RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-dashboard.Dockerfile
 ```
 
+For Dockerfile deployments, Railway variables used by Next.js during `next build` must be declared as Docker build args. The dashboard Dockerfile declares `ARG NEXT_PUBLIC_API_URL` so the `/api/*` rewrite is built against the Railway API URL instead of the local fallback.
+
 ## `sigma-api` Variables
 
 Required or recommended:
