@@ -85,6 +85,8 @@ The script creates the Postgres schema, upserts rows from all current Sigma tabl
 
 This migration command prepares the data layer. It does not switch `sigma-api` to Postgres yet; the runtime still reads SQLite through `DB_PATH`.
 
+Production migration status on 2026-06-06: the command was run from the Railway `sigma-api` console against `/data/sigma.db` and managed Railway `Postgres`. Verification passed with all tables `ok`; live rows copied were `approvals=1` and `outcome_log=1`.
+
 ## `sigma-dashboard` Variables
 
 Required:

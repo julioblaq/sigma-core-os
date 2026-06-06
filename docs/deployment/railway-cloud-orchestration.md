@@ -132,6 +132,17 @@ Safe sequence:
 4. Run `npm run db:migrate:postgres -- --verify-only` after any later copy.
 5. Keep `sigma-api` on SQLite until runtime Postgres support is implemented.
 
+Production copy completed on 2026-06-06 from inside the Railway `sigma-api` console:
+
+```text
+source: /data/sigma.db
+destination: managed Railway Postgres
+approvals: 1 -> 1
+outcome_log: 1 -> 1
+all other current Sigma tables: 0 -> 0
+verify-only pass: ok
+```
+
 ## Variables
 
 ### `sigma-api`
@@ -320,7 +331,6 @@ Today is successful when:
 ## Open Cloud Follow-Ups
 
 - Monitor `/data/sigma.db` persistence across redeploys.
-- Run the SQLite-to-Postgres migration against managed Railway `Postgres`.
 - Add runtime Postgres support and move durable reads/writes from `/data/sigma.db` to managed Railway `Postgres`.
 - Add Redis queue/cache integration against managed Railway `Redis`.
 - Add real secrets through Railway variables, not git or chat.

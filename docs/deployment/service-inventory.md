@@ -218,6 +218,8 @@ npm run db:migrate:postgres -- --verify-only
 
 The command creates the Postgres schema, upserts rows from all current Sigma SQLite tables, and verifies row counts. It does not switch the live API runtime to Postgres.
 
+Production copy completed on 2026-06-06 from the Railway `sigma-api` console using source `/data/sigma.db`. Verification passed after copying `approvals=1` and `outcome_log=1`; all other current Sigma tables verified at zero rows.
+
 Use an isolated test database for migration validation. Do not run migration tests against the live/local `sigma.db`.
 
 Current git working tree also already had unrelated local changes before this audit:
