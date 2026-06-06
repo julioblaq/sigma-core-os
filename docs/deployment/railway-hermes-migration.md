@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-06
-Status: Audited; Railway service shell created, deployment pending start-command and secret configuration.
+Status: Default Hermes API server deployed to Railway; 24 hour stability window pending.
 
 ## Objective
 
@@ -77,22 +77,27 @@ Project: sigma-core-os
 Environment: production
 Service: hermes-agent
 Service ID: 2d1eff0b-ed39-4683-b2a1-129313ad9cee
-Deployment: not deployed yet
+Deployment: ac9ab3e3-9191-4c19-8bc0-5a224390b307
+Public URL: https://hermes-agent-production-62ee.up.railway.app
 ```
 
-Candidate command:
+Verified Railway start command:
 
 ```text
-python -m hermes_cli.main gateway run --replace
+hermes gateway run --replace
 ```
 
-For the existing Hermes Dockerfile, the Railway start command should be:
+The Hermes API server is enabled through Railway variables and bound to Railway's service port:
 
 ```text
-gateway run --replace
+API_SERVER_ENABLED=true
+API_SERVER_HOST=0.0.0.0
+API_SERVER_PORT=8642
+API_SERVER_MODEL_NAME=hermes-agent
+PORT=8642
 ```
 
-Railway start-command behavior matters here: for Dockerfile deployments, Railway defaults to the image `ENTRYPOINT` and `CMD`. The Hermes Dockerfile has the right entrypoint, but its empty `CMD` routes to the base `hermes` command. The service should not be deployed until Railway service settings override the start command to `gateway run --replace`, or the Hermes deployment source gets a dedicated Railway config.
+`API_SERVER_KEY` is set in Railway and is required for model/API access. The public `/health` endpoint is intentionally available for uptime checks.
 
 Prefer deploying Hermes from the Hermes package/repository rather than copying Hermes runtime files into Sigma Core OS.
 
@@ -103,20 +108,27 @@ Store all production values in Railway variables. Do not commit secrets.
 Known or likely variables:
 
 - `HERMES_HOME`
+- `HERMES_UID`
+- `HERMES_GID`
+- `API_SERVER_ENABLED`
+- `API_SERVER_HOST`
+- `API_SERVER_PORT`
+- `API_SERVER_MODEL_NAME`
+- `API_SERVER_KEY`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
-- `GITHUB_TOKEN`
-- `TELEGRAM_BOT_TOKEN`
-- `TRADINGVIEW_WEBHOOK_SECRET`
-- Any Hermes-specific auth tokens from local `.env` files
+- `OPENROUTER_API_KEY`
+- Provider keys required by the cloud default profile
 
-Set `HERMES_HOME` in Railway to an app-owned path such as:
+Set `HERMES_HOME` in Railway to the container-owned data path:
 
 ```text
-/app/.hermes
+/opt/data
 ```
 
 If Hermes requires persistent state, back that path with a Railway volume.
+
+Do not copy the local Telegram bot token into Railway until the default local gateway is intentionally cut over. Running two long-polling Telegram gateways with the same bot token can break message handling.
 
 ## Pre-Migration Audit
 
@@ -138,13 +150,13 @@ Before deployment, inspect Hermes without printing secret values:
 3. Configure start command in Railway service settings:
 
    ```text
-   gateway run --replace
+   hermes gateway run --replace
    ```
 
-4. Add Railway variables.
+4. Add Railway variables. Done for API server and model-provider keys.
 5. Add a Railway volume for `HERMES_HOME` if Hermes writes durable profile state.
-6. Deploy to Railway.
-7. Confirm logs show gateway startup without local path assumptions.
+6. Deploy to Railway. Done.
+7. Confirm gateway startup without local path assumptions. Health endpoint verified.
 8. Keep the local LaunchAgent running during the first Railway smoke test.
 9. Switch traffic or clients to Railway only after successful health verification.
 10. After 24 hours of stable Railway runtime, disable only the migrated default local LaunchAgent.
@@ -153,16 +165,42 @@ Before deployment, inspect Hermes without printing secret values:
 
 - [x] Hermes dependencies identified
 - [x] Hermes start command confirmed
-- [ ] Secret variable names documented without values
+- [x] Secret variable names documented without values
 - [x] Railway service created
-- [ ] Railway variables configured
+- [x] Railway variables configured
 - [ ] Persistent state decision made for `HERMES_HOME`
-- [ ] Default gateway starts on Railway
+- [x] Default gateway starts on Railway
 - [ ] Logs remain healthy through restart
-- [ ] No local terminal required
+- [x] No local terminal required
 - [ ] 24 hour continuous runtime completed
 - [ ] Local default LaunchAgent disabled only after Railway success
 - [ ] Trading LaunchAgent remains local
+
+## Verified Railway Results
+
+Observed on 2026-06-06:
+
+```text
+GET https://hermes-agent-production-62ee.up.railway.app/health
+HTTP 200
+{"status": "ok", "platform": "hermes-agent"}
+```
+
+Unauthenticated model access is blocked:
+
+```text
+GET /v1/models
+HTTP 401
+Invalid API key
+```
+
+Authenticated model access succeeds with the Railway-only `API_SERVER_KEY`:
+
+```text
+GET /v1/models
+HTTP 200
+model: hermes-agent
+```
 
 ## Rollback Plan
 

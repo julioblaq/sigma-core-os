@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-06
-Status: Initial Railway cutover completed for Sigma API and dashboard.
+Status: Initial Railway cutover completed for Sigma API, dashboard, and secured Hermes API server.
 
 ## Goal
 
@@ -34,7 +34,7 @@ Codex should not become an autonomous trading executor. Production changes, brok
 | Sigma Dashboard | Human review and operational UI | Railway `sigma-dashboard` service. |
 | Sigma Bot | Trade-plan proposal handler | Runs in-process with `sigma-api` until queue workers exist. |
 | Sigma Dev | Docs/code artifact proposal handler | Runs in-process with `sigma-api` until queue workers exist. |
-| Hermes default gateway | Local gateway process | Candidate Railway `hermes-agent` service after profile/env audit. |
+| Hermes default gateway | Local gateway process retained during stability window | Railway `hermes-agent` secured API server. |
 | Hermes trading gateway | Trading-profile gateway | Local only until broker, OpenD, MFA, and LAN needs are proven safe. |
 | Moomoo OpenD | Local broker gateway | Local only. Never expose publicly. |
 
@@ -85,7 +85,7 @@ Live services:
 |---|---|---|
 | `sigma-api` | Deployed | `https://sigma-api-production-b005.up.railway.app` |
 | `sigma-dashboard` | Deployed | `https://sigma-dashboard-production-a7a7.up.railway.app` |
-| `hermes-agent` | Service shell only | Not deployed |
+| `hermes-agent` | Deployed | `https://hermes-agent-production-62ee.up.railway.app` |
 | `agent-worker` | Service shell only | Not deployed |
 | `trading-middleware-cloud` | Service shell only | Not deployed |
 
@@ -144,21 +144,27 @@ NEXT_PUBLIC_API_URL=https://sigma-api-production-b005.up.railway.app
 
 Do not copy local `.env` values into docs or Git.
 
-Candidate variable names from Hermes `.env.example` include:
+Verified cloud variables include:
 
 - `HERMES_HOME`
+- `HERMES_UID`
+- `HERMES_GID`
 - `OPENROUTER_API_KEY`
 - `GOOGLE_API_KEY`
-- `GEMINI_API_KEY`
-- `OLLAMA_API_KEY`
-- `EXA_API_KEY`
-- `PARALLEL_API_KEY`
-- `FIRECRAWL_API_KEY`
-- `FAL_KEY`
-- `HONCHO_API_KEY`
-- `TERMINAL_ENV`
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `KIMI_API_KEY`
+- `MINIMAX_API_KEY`
+- `API_SERVER_ENABLED`
+- `API_SERVER_HOST`
+- `API_SERVER_PORT`
+- `API_SERVER_MODEL_NAME`
+- `API_SERVER_KEY`
 
 Use only the variables needed by the cloud default profile.
+
+Telegram, trading, broker, and OpenD variables remain local until a deliberate cutover.
 
 ## Validation
 
@@ -220,6 +226,23 @@ Observed live dashboard response on 2026-06-06:
 GET /approvals -> HTTP 200
 ```
 
+After deploying `hermes-agent`:
+
+- Confirm public health endpoint returns `HTTP 200`.
+- Confirm unauthenticated model/API access returns `HTTP 401`.
+- Confirm authenticated model access returns `HTTP 200`.
+- Keep Telegram and trading credentials local during the stability window.
+
+Observed live Hermes response on 2026-06-06:
+
+```text
+GET /health -> HTTP 200
+{"status": "ok", "platform": "hermes-agent"}
+
+GET /v1/models without API key -> HTTP 401
+GET /v1/models with API_SERVER_KEY -> HTTP 200, model hermes-agent
+```
+
 ## Safety Rules
 
 - Do not expose OpenD publicly.
@@ -236,7 +259,7 @@ Today is successful when:
 - Railway Dockerfiles exist.
 - Sigma API and dashboard are deployed on Railway.
 - Tests pass with isolated DB.
-- Hermes default gateway has a documented cloud path.
+- Hermes default API server is deployed on Railway.
 - Hermes trading profile remains local.
 - A PR can be opened with deployment prep and docs.
 
@@ -245,4 +268,5 @@ Today is successful when:
 - Fix persistent `/data` volume ownership for the non-root `sigma-api` container.
 - Provision Railway PostgreSQL and Redis once the current database add authorization issue is resolved.
 - Add real secrets through Railway variables, not git or chat.
-- Deploy Hermes only after the default profile audit confirms it has no local-only broker, GUI, MFA, OpenD, or LAN dependencies.
+- Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.
+- Decide whether `HERMES_HOME=/opt/data` needs a Railway volume before relying on long-term Hermes session memory.
