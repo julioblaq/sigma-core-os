@@ -10,6 +10,8 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 |---|---|---|
 | `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Uses `/data/sigma.db` on the Railway volume. |
 | `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
+| `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Not yet used by Sigma code. |
+| `Redis` | Railway managed database | Online. Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, volume `redis-volume`. Not yet used by Sigma code. |
 
 ## Railway Setup
 
@@ -58,6 +60,8 @@ HERMES_TIMEOUT_MS=30000
 The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then uses `gosu` to drop execution to the `node` user before launching the API.
 
 Keep `sigma-api` at one replica while SQLite is the production store. Move to PostgreSQL before multi-replica traffic.
+
+Railway managed `Postgres` and `Redis` are provisioned and online. Do not point `sigma-api` at `DATABASE_URL` or `REDIS_URL` until the repository has PostgreSQL migration code and Redis queue/cache integration.
 
 ## `sigma-dashboard` Variables
 

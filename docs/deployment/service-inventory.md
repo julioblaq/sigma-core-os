@@ -39,8 +39,10 @@ Environment: production
 
 | Service | Classification | Current entrypoint | Evidence | Migration notes |
 |---|---:|---|---|---|
-| Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. Uses `/data/sigma.db` on the attached Railway volume and has been verified across redeploy. Keep single-replica until PostgreSQL is provisioned. |
+| Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. Uses `/data/sigma.db` on the attached Railway volume and has been verified across redeploy. Keep single-replica until PostgreSQL migration is implemented. |
 | Sigma Dashboard | Cloud Safe | `cd apps/dashboard && npm run start` | `apps/dashboard/package.json`, `apps/dashboard/next.config.mjs` | Deployed to Railway service `sigma-dashboard` at `https://sigma-dashboard-production-a7a7.up.railway.app`. `/approvals` renders with HTTP 200 and points at the Railway API URL. |
+| Railway Postgres | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Postgres` (`f80547fb-42aa-42c7-afa7-018044531379`) with `postgres-volume`. Not yet used by Sigma code; next step is migration code and data copy from SQLite. |
+| Railway Redis | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Redis` (`4107f338-a335-4547-a8d3-22e5e0c67669`) with `redis-volume`. Not yet used by Sigma code; next step is queue/cache integration. |
 | Sigma Voice Agent | Cloud Safe | `sigma-dashboard` mic UI + `sigma-api` voice routes | `apps/dashboard/app/voice/page.tsx`, `core/voice/index.ts`, `apps/api/server.ts` | Voice is an operator input layer. It transcribes audio, can synthesize replies, and queues approval-gated voice task drafts. It does not execute tasks or broker actions directly. |
 | Sigma Bot TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-bot/handler.ts`, `core/router/index.ts` | Currently runs in-process when API receives `trade_plan` tasks. Keep with API for first migration, or later split into `agent-worker` when a durable queue exists. |
 | Sigma Dev TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-dev/handler.ts`, `core/router/index.ts` | Currently in-process. Write actions are approval-gated and sandboxed. Cloud deployment needs `SIGMA_SANDBOX_PATH` pointed at an ephemeral or persistent Railway volume depending on intended artifact retention. |
@@ -151,13 +153,12 @@ The repository now has Dockerfile-based Railway deployment assets for the Sigma 
 - `docker-compose.yml`
 - process manager config
 - queue worker entrypoint
-- PostgreSQL migration scripts
-- Redis integration
+- PostgreSQL migration scripts and repository support for `DATABASE_URL`
+- Redis queue/cache integration and repository support for `REDIS_URL`
 - CI/CD deployment workflow
 
 Railway service shells created but not yet deployed:
 
-- `hermes-agent`
 - `agent-worker`
 - `trading-middleware-cloud`
 
@@ -203,7 +204,7 @@ sigma-dashboard -> SUCCESS
 GET https://sigma-dashboard-production-a7a7.up.railway.app/approvals -> HTTP 200
 ```
 
-Railway managed PostgreSQL and Redis were not provisioned in this pass because `railway add --database postgres` and `railway add --database redis` returned `Unauthorized` even after CLI login. Retried on 2026-06-06 after the `/data` persistence fix; both `railway add --database postgres --json` and `railway add --database redis --json` still returned `Unauthorized`. Revisit from the Railway dashboard, reauthenticate the CLI, or refresh account/project permissions.
+Railway managed PostgreSQL and Redis were blocked from the CLI because `railway add --database postgres` and `railway add --database redis` returned `Unauthorized` even after CLI login. They were provisioned through the Railway dashboard on 2026-06-06 instead. `Postgres` and `Redis` both show `Online` in the Railway architecture view.
 
 The `sigma-api` Railway volume at `/data` is now active. Deployment `d46ed713-75d8-4434-a5de-3fc219fac9a9` opened `/data/sigma.db`, passed the public `/health` check, and read back a smoke-test approval after redeploy. This proves the current SQLite database survives container replacement.
 
@@ -220,8 +221,8 @@ The clean dependency install restored the missing `node_modules` files. The exis
 
 1. Deploy `sigma-api` from `deploy/railway/sigma-api.Dockerfile`.
 2. Deploy `sigma-dashboard` from `deploy/railway/sigma-dashboard.Dockerfile`.
-3. Fix `/data` Railway volume ownership for the non-root API container, or migrate to PostgreSQL before production traffic.
-4. Keep SQLite on a single Railway volume only as a temporary bridge, or migrate to PostgreSQL before multi-replica usage.
+3. Keep SQLite on a single Railway volume only as a temporary bridge.
+4. Add PostgreSQL migration code and move durable state to managed Railway `Postgres` before multi-replica usage.
 5. Keep agent handlers in-process until a durable queue exists.
 6. Keep OpenD, broker desktop software, MFA sessions, and Hermes trading profile local.
 7. Audit Hermes default gateway separately before deploying it to Railway.

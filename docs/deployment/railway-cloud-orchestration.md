@@ -63,8 +63,8 @@ Before deployment, confirm the default profile does not require local GUI sessio
 ### Wave 3: Evaluate Later
 
 - Dedicated worker process
-- Redis queue
-- PostgreSQL migration
+- Redis queue integration against the managed Railway `Redis` service
+- PostgreSQL migration against the managed Railway `Postgres` service
 - Cloud-safe MCP servers
 - Webhook receivers
 - Trading middleware
@@ -110,6 +110,13 @@ SIGMA_SANDBOX_PATH=/data/sandbox
 ```
 
 The API image uses `deploy/railway/sigma-api-entrypoint.sh` to prepare the mounted volume path, then uses `gosu` to start the API as the `node` user. This keeps the first cloud move small. Keep `sigma-api` single-replica while SQLite is active. PostgreSQL should replace SQLite before multi-replica production traffic.
+
+Managed Railway databases are provisioned for the next migration step:
+
+| Service | Status | Notes |
+|---|---:|---|
+| `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Not yet used by Sigma code. |
+| `Redis` | Online | Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, backed by `redis-volume`. Not yet used by Sigma code. |
 
 ## Variables
 
@@ -299,7 +306,8 @@ Today is successful when:
 ## Open Cloud Follow-Ups
 
 - Monitor `/data/sigma.db` persistence across redeploys.
-- Provision Railway PostgreSQL and Redis once the current database add authorization issue is resolved.
+- Add PostgreSQL migration code and move durable state from `/data/sigma.db` to managed Railway `Postgres`.
+- Add Redis queue/cache integration against managed Railway `Redis`.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.
 - Decide whether `HERMES_HOME=/opt/data` needs a Railway volume before relying on long-term Hermes session memory.
