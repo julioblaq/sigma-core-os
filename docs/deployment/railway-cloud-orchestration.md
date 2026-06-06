@@ -102,21 +102,14 @@ A Railway volume is attached to `sigma-api` at:
 /data
 ```
 
-The current live `sigma-api` deployment temporarily uses:
-
-```text
-DB_PATH=/tmp/sigma.db
-SIGMA_SANDBOX_PATH=/tmp/sandbox
-```
-
-This keeps the API online with the non-root container while the Railway volume mount ownership issue is fixed. The intended persistent setting remains:
+The persistent `sigma-api` deployment uses:
 
 ```text
 DB_PATH=/data/sigma.db
 SIGMA_SANDBOX_PATH=/data/sandbox
 ```
 
-This keeps the first cloud move small. PostgreSQL should still replace SQLite before multi-replica production traffic.
+The API image uses `deploy/railway/sigma-api-entrypoint.sh` to prepare the mounted volume path, then starts the API as the `node` user. This keeps the first cloud move small. Keep `sigma-api` single-replica while SQLite is active. PostgreSQL should replace SQLite before multi-replica production traffic.
 
 ## Variables
 
@@ -124,8 +117,8 @@ This keeps the first cloud move small. PostgreSQL should still replace SQLite be
 
 ```text
 PORT=3001
-DB_PATH=/tmp/sigma.db
-SIGMA_SANDBOX_PATH=/tmp/sandbox
+DB_PATH=/data/sigma.db
+SIGMA_SANDBOX_PATH=/data/sandbox
 DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
@@ -305,7 +298,7 @@ Today is successful when:
 
 ## Open Cloud Follow-Ups
 
-- Fix persistent `/data` volume ownership for the non-root `sigma-api` container.
+- Monitor `/data/sigma.db` persistence across redeploys.
 - Provision Railway PostgreSQL and Redis once the current database add authorization issue is resolved.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.

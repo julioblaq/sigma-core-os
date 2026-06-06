@@ -8,7 +8,7 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 
 | Railway service | Dockerfile path | Notes |
 |---|---|---|
-| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Current live deployment uses `/tmp/sigma.db` until persistent storage is fixed. |
+| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Uses `/data/sigma.db` on the Railway volume. |
 | `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
 
 ## Railway Setup
@@ -35,8 +35,8 @@ Required or recommended:
 
 ```text
 PORT=3001
-DB_PATH=/tmp/sigma.db
-SIGMA_SANDBOX_PATH=/tmp/sandbox
+DB_PATH=/data/sigma.db
+SIGMA_SANDBOX_PATH=/data/sandbox
 DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
@@ -55,7 +55,9 @@ HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
 ```
 
-The intended persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The current non-root container cannot write to that mounted volume yet, so do not treat `/tmp/sigma.db` as durable production memory.
+The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then drops execution to the `node` user before launching the API.
+
+Keep `sigma-api` at one replica while SQLite is the production store. Move to PostgreSQL before multi-replica traffic.
 
 ## `sigma-dashboard` Variables
 
