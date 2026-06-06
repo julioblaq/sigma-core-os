@@ -1,10 +1,5 @@
 FROM node:22-slim
 
-ENV NODE_ENV=production
-ENV PORT=3001
-ENV DB_PATH=/data/sigma.db
-ENV SIGMA_SANDBOX_PATH=/data/sandbox
-
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -17,6 +12,11 @@ COPY core ./core
 COPY integrations ./integrations
 
 RUN mkdir -p /data/sandbox && chown -R node:node /data /app
+
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV DB_PATH=/data/sigma.db
+ENV SIGMA_SANDBOX_PATH=/data/sandbox
 
 USER node
 

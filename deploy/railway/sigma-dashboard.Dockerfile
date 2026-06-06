@@ -1,6 +1,5 @@
 FROM node:22-slim
 
-ENV NODE_ENV=production
 ENV PORT=3000
 ENV NEXT_TELEMETRY_DISABLED=1
 
@@ -13,6 +12,8 @@ COPY apps/dashboard ./
 RUN npm run build
 
 RUN chown -R node:node /app
+
+ENV NODE_ENV=production
 
 USER node
 
