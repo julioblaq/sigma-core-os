@@ -135,13 +135,13 @@ The first `npm test` attempt did not reach application tests because the local `
 After the clean install, `npm test` against the default `DB_PATH` still failed because `node-sqlite3-wasm` could not open the local repository `sigma.db`. Running the full suite with an isolated temporary database passed:
 
 ```text
-DB_PATH=/private/tmp/sigma-core-os-test-railway-2.db npm test
+DB_PATH=/private/tmp/sigma-core-os-test-railway-3.db npm test
 ```
 
 Result:
 
 ```text
-214 tests passed
+219 tests passed
 0 failed
 ```
 
@@ -152,7 +152,7 @@ npm run typecheck
 cd apps/dashboard && npm run build
 ```
 
-Both passed on 2026-06-06 after narrowing the root TypeScript project to server-side code and pinning the dashboard TypeScript version for Next 14.2.3 compatibility.
+Both passed on 2026-06-06 after narrowing the root TypeScript project to server-side code and pinning the dashboard TypeScript version for Next 14.2.3 compatibility. The dashboard build generated 16 static app routes.
 
 Use an isolated test database for migration validation. Do not run migration tests against the live/local `sigma.db`.
 

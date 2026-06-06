@@ -141,7 +141,7 @@ Before deploying:
 
 ```text
 npm run typecheck
-DB_PATH=/private/tmp/sigma-core-os-test-railway-2.db npm test
+DB_PATH=/private/tmp/sigma-core-os-test-railway-3.db npm test
 cd apps/dashboard && npm run build
 ```
 
@@ -149,9 +149,9 @@ Expected result:
 
 ```text
 typecheck passed
-214 tests passed
+219 tests passed
 0 failed
-dashboard build passed
+dashboard build passed, 16 app routes generated
 ```
 
 After deploying `sigma-api`:
