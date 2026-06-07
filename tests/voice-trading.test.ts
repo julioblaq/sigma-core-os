@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  formatVoiceTradeCoachCopy,
   parseVoiceTradeDraft,
   VoiceTradeParseError,
 } from '../core/voice/trading.js';
@@ -39,6 +40,33 @@ describe('Nova voice trading draft parser', () => {
     assert.equal(draft.assumptions.length, 3);
   });
 
+  it('formats short trader-native coach copy for voice drafts', () => {
+    const copy = formatVoiceTradeCoachCopy({
+      symbol: 'MNQ',
+      side: 'long',
+      entry: 19000,
+      stop: 18990,
+      target: 19020,
+      contracts: 5,
+      stopPoints: 10,
+      targetPoints: 20,
+      rr: 2,
+      riskDollars: 100,
+      riskPercent: 2,
+      pointValue: 2,
+      warnings: [],
+      blocked: false,
+      blockReasons: [],
+    }, ['account size defaulted to 5000'], true);
+
+    assert.match(copy.answer, /MNQ LONG: 5x @ 19000/);
+    assert.match(copy.voiceText, /Draft queued for approval/);
+    assert.match(copy.voiceText, /No broker order sent/);
+    assert.deepEqual(copy.highlights.map(item => item.label), ['Draft', 'Risk']);
+    assert.equal(copy.highlights[0].avoidCriticalControls, true);
+    assert.equal(copy.highlights[0].blocksInteraction, false);
+  });
+
   it('parses daily loss context when spoken', () => {
     const draft = parseVoiceTradeDraft(
       'NQ buy at 18000 with a 20 point stop risk 400 dollars 2R account 30000 down today 500',
@@ -72,4 +100,3 @@ describe('Nova voice trading draft parser', () => {
     );
   });
 });
-

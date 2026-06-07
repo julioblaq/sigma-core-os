@@ -52,6 +52,23 @@ interface TranscriptionResult {
   error?: string;
 }
 
+interface NovaHighlight {
+  label: string;
+  value: string;
+  target?: string;
+  placement?: string;
+  tone?: 'info' | 'warning' | 'neutral';
+  durationMs?: number;
+  avoidCriticalControls?: boolean;
+  blocksInteraction?: false;
+}
+
+interface NovaCoach {
+  voiceText: string;
+  answer?: string;
+  highlights: NovaHighlight[];
+}
+
 function headers(): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = typeof window !== 'undefined' ? localStorage.getItem('sigma_token') : null;
@@ -107,6 +124,42 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="uppercase tracking-wider">{label}</span>
       {children}
     </label>
+  );
+}
+
+function NovaCoachPanel({ coach, visible }: { coach: NovaCoach; visible: boolean }) {
+  return (
+    <div
+      className="mt-3 rounded-md border p-3 transition-opacity duration-700"
+      style={{
+        borderColor: 'rgba(59,130,246,0.28)',
+        background: 'rgba(59,130,246,0.08)',
+        opacity: visible ? 1 : 0,
+        pointerEvents: 'none',
+      }}
+      aria-live="polite"
+    >
+      <div className="text-xs font-medium" style={{ color: 'var(--text)' }}>
+        {coach.voiceText}
+      </div>
+      {coach.highlights.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {coach.highlights.map((highlight, index) => (
+            <span
+              key={`${highlight.label}-${index}`}
+              className="mono text-xs rounded px-2 py-1"
+              style={{
+                color: highlight.tone === 'warning' ? 'var(--accent)' : '#60a5fa',
+                border: `1px solid ${highlight.tone === 'warning' ? 'rgba(245,158,11,0.35)' : 'rgba(59,130,246,0.35)'}`,
+                background: highlight.tone === 'warning' ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.12)',
+              }}
+            >
+              {highlight.label}: {highlight.value}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -180,6 +233,8 @@ export default function TradingOpsPage() {
   const [voiceTranscript, setVoiceTranscript] = useState('Draft a simulated MNQ long at 19000 with a 10 point stop, risk 100 dollars, 2R.');
   const [voiceStatus, setVoiceStatus] = useState('');
   const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceCoach, setVoiceCoach] = useState<NovaCoach | null>(null);
+  const [voiceCoachVisible, setVoiceCoachVisible] = useState(false);
 
   const tradePending = useMemo(
     () => pending.filter(a => a.action === 'trade_plan' && a.agent === 'sigma-risk'),
@@ -206,9 +261,22 @@ export default function TradingOpsPage() {
     return () => clearInterval(timer);
   }, [load]);
 
+  useEffect(() => {
+    if (!voiceCoach) return;
+    setVoiceCoachVisible(true);
+    const longestHighlight = Math.max(5200, ...voiceCoach.highlights.map(item => item.durationMs ?? 5200));
+    const fade = window.setTimeout(() => setVoiceCoachVisible(false), longestHighlight);
+    const clear = window.setTimeout(() => setVoiceCoach(null), longestHighlight + 900);
+    return () => {
+      window.clearTimeout(fade);
+      window.clearTimeout(clear);
+    };
+  }, [voiceCoach]);
+
   async function sendSimulatedAlert() {
     setSubmitting(true);
     setResult(null);
+    setVoiceCoach(null);
     try {
       const body: Record<string, unknown> = {
         symbol,
@@ -288,6 +356,7 @@ export default function TradingOpsPage() {
       const data = await response.json() as TranscriptionResult;
       if (!response.ok) throw new Error(data.error ?? 'transcription failed');
       setVoiceTranscript(data.text);
+      setVoiceCoach(null);
       setVoiceStatus(`${data.provider} / ${data.model} / ${data.latencyMs}ms`);
     } catch (err) {
       setVoiceStatus(err instanceof Error ? err.message : 'transcription failed');
@@ -324,7 +393,14 @@ export default function TradingOpsPage() {
         error: response.ok ? undefined : data.error ?? data.blockReasons?.join(', ') ?? 'Voice draft rejected',
         status: response.status,
       });
-      setVoiceStatus(response.ok ? `queued ${data.approvalId}` : data.code ?? 'rejected');
+      if (data.voiceText) {
+        setVoiceCoach({
+          voiceText: data.voiceText,
+          answer: data.answer,
+          highlights: Array.isArray(data.highlights) ? data.highlights : [],
+        });
+      }
+      setVoiceStatus(response.ok ? `approval queued ${data.approvalId}` : data.code ?? 'rejected');
       await load();
     } catch (err) {
       setVoiceStatus(err instanceof Error ? err.message : 'voice draft failed');
@@ -451,6 +527,7 @@ export default function TradingOpsPage() {
                 {voiceStatus}
               </div>
             )}
+            {voiceCoach && <NovaCoachPanel coach={voiceCoach} visible={voiceCoachVisible} />}
           </div>
         </section>
 

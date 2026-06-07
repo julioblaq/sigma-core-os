@@ -16,14 +16,25 @@ describe('Nova safe operator endpoints', () => {
     });
 
     assert.equal(result.intent, null);
-    assert.match(result.answer, /No executable action/);
+    assert.match(result.answer, /Read-only/);
+    assert.match(result.answer, /trend, key level, then risk/);
     assert.equal(result.voiceText, result.answer);
-    assert.deepEqual(result.highlights.map(item => item.label), [
-      'activeApp',
-      'activeWindowTitle',
-      'sessionId',
-      'screenshot',
-    ]);
+    assert.deepEqual(result.highlights.map(item => item.label), ['Chart', 'Screenshot']);
+    assert.equal(result.highlights[0].avoidCriticalControls, true);
+    assert.equal(result.highlights[0].blocksInteraction, false);
+  });
+
+  it('uses direct trader-native language for risk and order questions', () => {
+    const result = answerNovaQuery({
+      transcript: 'Where is my stop loss on this ticket?',
+      activeApp: 'TradingView',
+      activeWindowTitle: 'MNQ order ticket',
+    });
+
+    assert.equal(result.intent, null);
+    assert.match(result.voiceText, /Check the stop field/);
+    assert.match(result.voiceText, /No broker order sent/);
+    assert.deepEqual(result.highlights.map(item => item.label), ['Risk', 'Chart']);
   });
 
   it('creates durable Nova journal memory entries', async () => {
