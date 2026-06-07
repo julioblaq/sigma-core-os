@@ -13,6 +13,7 @@ const LINKS = [
   { href: '/memory', label: 'Memory' },
   { href: '/activity', label: 'Activity' },
   { href: '/risk', label: 'Risk' },
+  { href: '/trading', label: 'Trading' },
   { href: '/strategies', label: 'Strategies' },
   { href: '/journal', label: 'Journal' },
   { href: '/performance', label: 'Performance' },

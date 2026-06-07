@@ -222,6 +222,22 @@ Example alert body:
 
 If defaults are not configured, alerts must also include `accountSize`, `riskDollars`, and `rrRatio`.
 
+## Simulated Trading Ops Flow
+
+The dashboard includes a no-account simulated alert surface:
+
+```text
+/trading
+```
+
+It submits approval-only trade-plan drafts through:
+
+```text
+POST /v1/trading/simulated-alert
+```
+
+This route uses the same deterministic Sigma risk engine as the TradingView webhook, stores `source=simulated`, and never submits broker orders. It is the preferred workflow while no prop-firm account or sufficiently funded live account is connected.
+
 ## First Cloud Cutover Rule
 
 Only move cloud-safe services first:

@@ -18,6 +18,7 @@
 // POST /v1/risk/position-size
 // POST /v1/risk/tp-sl
 // POST /v1/risk/trade-plan
+// POST /v1/trading/simulated-alert
 // POST /v1/webhooks/tradingview
 // GET  /v1/risk/contracts
 // POST /v1/workspaces
@@ -143,6 +144,11 @@ import {
   buildTradingViewWebhookPlan,
   TradingViewWebhookError,
 } from '../../core/webhooks/tradingview.js';
+import {
+  buildSimulatedAlertPlan,
+  SimulatedAlertError,
+  type SimulatedAlertInput,
+} from '../../core/webhooks/simulated.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -781,6 +787,84 @@ app.post<{ Body: {
     } catch (err) {
       if (err instanceof RiskError) return reply.code(400).send({ error: err.message, code: err.code });
       if (err instanceof StrategyError) return reply.code(err.code === 'STRATEGY_NOT_FOUND' ? 404 : 400).send({ error: err.message, code: err.code });
+      throw err;
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Simulated trading alert receiver
+// ---------------------------------------------------------------------------
+
+app.post<{ Body: SimulatedAlertInput }>(
+  '/v1/trading/simulated-alert',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['symbol', 'side', 'entry', 'stopPoints', 'rrRatio', 'accountSize', 'riskDollars'],
+        properties: {
+          symbol: { type: 'string' },
+          side: { type: 'string' },
+          entry: { type: 'number' },
+          stopPoints: { type: 'number' },
+          rrRatio: { type: 'number' },
+          accountSize: { type: 'number' },
+          riskDollars: { type: 'number' },
+          dailyLossDollars: { type: 'number' },
+          maxDailyLossPct: { type: 'number' },
+          propStartBalance: { type: 'number' },
+          propMaxDrawdownPct: { type: 'number' },
+          submittedBy: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const alert = buildSimulatedAlertPlan({
+        ...req.body,
+        submittedBy: req.body.submittedBy ?? await getUserId(req as Parameters<typeof getUserId>[0]),
+      });
+      const plan = generateTradePlan(alert.planInput);
+      if (plan.blocked) {
+        return reply.code(422).send({
+          plan,
+          queued: false,
+          blockReasons: plan.blockReasons,
+          source: alert.source,
+          executionMode: 'approval_only',
+        });
+      }
+
+      const approval = await requestApproval(
+        'sigma-risk',
+        'trade_plan',
+        `Simulated alert: ${plan.side.toUpperCase()} ${plan.contracts}x ${plan.symbol} @ ${plan.entry}`,
+        {
+          plan,
+          taskId: randomUUID(),
+          submittedBy: alert.submittedBy,
+          source: alert.source,
+          rawAlert: alert.rawAlert,
+          executionMode: 'approval_only',
+        },
+      );
+
+      return reply.code(202).send({
+        queued: true,
+        approvalId: approval.id,
+        plan,
+        source: alert.source,
+        executionMode: 'approval_only',
+      });
+    } catch (err) {
+      if (err instanceof SimulatedAlertError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
+      if (err instanceof RiskError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
       throw err;
     }
   },

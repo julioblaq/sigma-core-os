@@ -88,6 +88,7 @@ Live services:
 | `hermes-agent` | Deployed | `https://hermes-agent-production-62ee.up.railway.app` |
 | `agent-worker` | Redis worker Dockerfile ready | Deploy with `RAILWAY_DOCKERFILE_PATH=deploy/railway/agent-worker.Dockerfile` |
 | TradingView webhook middleware | Implemented in `sigma-api` | Approval-only receiver at `/v1/webhooks/tradingview`; no broker execution. |
+| Simulated trading ops | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` sends approval-only simulated alerts through `/v1/trading/simulated-alert`. |
 | `trading-middleware-cloud` | Service shell only | Keep offline until a separate service is needed. |
 
 Create separate Railway services from the same GitHub repository for Sigma:
@@ -262,6 +263,8 @@ Use only the variables needed by the cloud default profile.
 Telegram, trading, broker, and OpenD variables remain local until a deliberate cutover.
 
 TradingView webhook variables are cloud-safe because they only allow alert intake into Sigma's approval queue. They do not enable broker execution, Ghost execution, Tradovate execution, or OpenD access.
+
+While no prop-firm account or sufficiently funded live account is connected, use the dashboard simulated alert flow as the primary trading middleware test harness. It preserves the same risk-plan approval behavior without depending on market alerts, broker sessions, or external account state.
 
 ## Validation
 
