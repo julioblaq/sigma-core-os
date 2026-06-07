@@ -74,9 +74,9 @@ TRADINGVIEW_DEFAULT_RR=2
 
 `DB_PATH` is intentionally omitted from the Railway production variables. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares `SIGMA_SANDBOX_PATH`, and then uses `gosu` to drop execution to the `node` user before launching the API.
 
-With `SIGMA_CONTROL_STORE=postgres`, runtime store facades use Railway Postgres and the SQLite modules are only loaded on the local/default fallback path. The historical `/data/sigma.db` volume can remain temporarily as an unattached rollback artifact, but the production runtime no longer depends on it.
+With `SIGMA_CONTROL_STORE=postgres`, runtime store facades use Railway Postgres and the SQLite modules are only loaded on the local/default fallback path. The historical `sigma-api-volume` remains attached at `/data` as a temporary rollback artifact, but `DB_PATH` is absent and production no longer depends on the volume.
 
-Railway managed `Postgres` and `Redis` are provisioned and online. `Redis` is not wired yet. `Postgres` backs the Sigma runtime store:
+Railway managed `Postgres` and `Redis` are provisioned and online. `Postgres` backs the Sigma runtime store, and `Redis` backs the agent task queue when `TASK_QUEUE_MODE=redis`:
 
 ```text
 SIGMA_CONTROL_STORE=postgres

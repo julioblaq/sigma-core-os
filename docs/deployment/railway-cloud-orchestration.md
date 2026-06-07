@@ -106,7 +106,7 @@ The original single-replica bridge attached a Railway volume to `sigma-api` at:
 /data
 ```
 
-The current Postgres production deployment no longer needs this volume or `DB_PATH`. Keep the old volume only as a temporary rollback artifact while the Postgres deployment soaks.
+The current Postgres production deployment no longer needs this volume or `DB_PATH`. As of 2026-06-07, `DB_PATH` is absent and `SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox` is live in Railway. The old `sigma-api-volume` is still attached at `/data` only as a temporary rollback artifact; Railway currently exposes this cleanup as a destructive volume delete/wipe action.
 
 The old persistent SQLite deployment used:
 
@@ -122,7 +122,7 @@ Managed Railway databases are provisioned:
 | Service | Status | Notes |
 |---|---:|---|
 | `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Seeded from live `/data/sigma.db` and backing the Sigma runtime store. |
-| `Redis` | Online | Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, backed by `redis-volume`. Not yet used by Sigma code. |
+| `Redis` | Online | Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, backed by `redis-volume`. Used by the agent task queue when `TASK_QUEUE_MODE=redis`; cache integration remains future work. |
 
 The first migration layer is available as:
 
@@ -396,8 +396,8 @@ Today is successful when:
 ## Open Cloud Follow-Ups
 
 - Monitor Postgres-backed approval, memory, identity, trading, and execution store activity after redeploys.
-- Remove the old `/data/sigma.db` volume after the Postgres deployment completes its rollback window.
-- Deploy `agent-worker` and set `TASK_QUEUE_MODE=redis` on `sigma-api` before increasing API replicas.
+- Delete the old `sigma-api-volume` at `/data` after the Postgres deployment completes its rollback window and historical Railway volume data no longer needs to be retained.
+- Keep `agent-worker` online and `TASK_QUEUE_MODE=redis` active on `sigma-api` before increasing API replicas.
 - Add Redis cache integration beyond the task queue if low-latency dashboard reads need it.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.
