@@ -47,7 +47,7 @@
 
 import Fastify, { type FastifyReply } from 'fastify';
 import { randomUUID } from 'crypto';
-import { route } from '../../core/router/index.js';
+import { dispatchTask } from '../../core/queue/tasks.js';
 import {
   listPending,
   getApproval,
@@ -263,7 +263,7 @@ app.post<{ Body: { type: string; payload: Record<string, unknown>; submittedBy?:
       id: randomUUID(), type: req.body.type, payload: req.body.payload,
       submittedBy: req.body.submittedBy ?? 'api', createdAt: new Date().toISOString(),
     };
-    const result = await route(task);
+    const result = await dispatchTask(task);
     return reply.code(result.status === 'error' ? 400 : 202).send(result);
   },
 );

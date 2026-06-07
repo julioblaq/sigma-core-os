@@ -42,13 +42,14 @@ Environment: production
 | Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. Production defaults to `SIGMA_CONTROL_STORE=postgres`; runtime store facades use Railway Postgres and do not open the local SQLite database at import time. |
 | Sigma Dashboard | Cloud Safe | `cd apps/dashboard && npm run start` | `apps/dashboard/package.json`, `apps/dashboard/next.config.mjs` | Deployed to Railway service `sigma-dashboard` at `https://sigma-dashboard-production-a7a7.up.railway.app`. `/approvals` renders with HTTP 200 and points at the Railway API URL. |
 | Railway Postgres | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Postgres` (`f80547fb-42aa-42c7-afa7-018044531379`) with `postgres-volume`. Live `/data/sigma.db` data was copied and verified. Runtime support exists for identity, control, trading, and execution audit stores through `SIGMA_CONTROL_STORE=postgres`. |
-| Railway Redis | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Redis` (`4107f338-a335-4547-a8d3-22e5e0c67669`) with `redis-volume`. Not yet used by Sigma code; next step is queue/cache integration. |
+| Railway Redis | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Redis` (`4107f338-a335-4547-a8d3-22e5e0c67669`) with `redis-volume`. Used by the new agent task queue when `TASK_QUEUE_MODE=redis`; cache integration remains future work. |
 | Sigma Voice Agent | Cloud Safe | `sigma-dashboard` mic UI + `sigma-api` voice routes | `apps/dashboard/app/voice/page.tsx`, `core/voice/index.ts`, `apps/api/server.ts` | Voice is an operator input layer. It transcribes audio, can synthesize replies, and queues approval-gated voice task drafts. It does not execute tasks or broker actions directly. |
-| Sigma Bot TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-bot/handler.ts`, `core/router/index.ts` | Currently runs in-process when API receives `trade_plan` tasks. Keep with API for first migration, or later split into `agent-worker` when a durable queue exists. |
-| Sigma Dev TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-dev/handler.ts`, `core/router/index.ts` | Currently in-process. Write actions are approval-gated and sandboxed. Production defaults `SIGMA_SANDBOX_PATH` to ephemeral `/tmp/sigma-sandbox`; attach a volume only if generated artifacts must persist outside Postgres audit records. |
+| Sigma Bot TypeScript handler | Cloud Safe | Loaded by API router or `agent-worker` | `agents/sigma-bot/handler.ts`, `core/router/index.ts`, `core/queue/tasks.ts` | Runs through Redis-backed `agent-worker` when `TASK_QUEUE_MODE=redis`. Inline API fallback remains for local development. |
+| Sigma Dev TypeScript handler | Cloud Safe | Loaded by API router or `agent-worker` | `agents/sigma-dev/handler.ts`, `core/router/index.ts`, `core/queue/tasks.ts` | Runs through Redis-backed `agent-worker` when `TASK_QUEUE_MODE=redis`. Write actions are approval-gated and sandboxed. Production defaults `SIGMA_SANDBOX_PATH` to ephemeral `/tmp/sigma-sandbox`; attach a volume only if generated artifacts must persist outside Postgres audit records. |
+| Agent worker | Cloud Safe | `npm run start:worker` | `apps/worker/agent-worker.ts`, `deploy/railway/agent-worker.Dockerfile` | Consumes Redis queue `sigma:tasks`, runs the existing router, and records lightweight task results/dead letters in Redis. Deploy before increasing `sigma-api` replicas. |
 | LLM routing client | Cloud Safe | Imported by agent handlers | `core/llm/index.ts`, `integrations/litellm/README.md` | Uses hosted OpenAI/Anthropic/LiteLLM-compatible APIs when configured with environment variables. Local Ollama fallback is not cloud safe unless replaced with a hosted/private endpoint. |
 | SQLite database file | Local fallback | `DB_PATH=./sigma.db` locally, optional explicit rollback variable only | `core/db.ts`, `.env.example` | No longer required by the Railway production image or Postgres runtime path. The SQLite-backed modules are lazy-loaded only when `SIGMA_CONTROL_STORE` is left at the local/default SQLite mode. |
-| Memory store | Cloud Safe | Postgres in production, SQLite fallback locally | `core/memory/index.ts`, `core/store/control.ts` | Sigma Bot and Sigma Dev memory entries are covered by the Postgres runtime store when `SIGMA_CONTROL_STORE=postgres`. Redis cache integration remains future work. |
+| Memory store | Cloud Safe | Postgres in production, SQLite fallback locally | `core/memory/index.ts`, `core/store/control.ts` | Sigma Bot and Sigma Dev memory entries are covered by the Postgres runtime store when `SIGMA_CONTROL_STORE=postgres`. Redis task queue integration is separate from long-term memory. |
 | Approval queue and audit log | Cloud Safe | Postgres in production, SQLite fallback locally | `core/policies/index.ts`, `core/runtime/index.ts`, `core/store/control.ts` | Approvals, Hermes dispatch lookups, voice/risk approvals, and outcome logs are covered by the Postgres runtime store when `SIGMA_CONTROL_STORE=postgres`. |
 | Paper broker adapter | Cloud Safe | Imported by runtime | `core/broker/index.ts` | Paper-only, no live broker credentials, and live mode is structurally rejected. Safe to run in cloud because it does not connect to Tradovate, Moomoo, IBKR, Alpaca, or OpenD. |
 | Sandbox writer | Unknown | Imported by runtime | `core/sandbox/index.ts` | Safe design, but storage target matters. Railway deployments should set `SIGMA_SANDBOX_PATH` explicitly and decide whether sandbox artifacts are temporary or volume-backed. |
@@ -106,6 +107,9 @@ Documented by `.env.example`:
 - `DATABASE_URL`
 - `SIGMA_CONTROL_STORE`
 - `DB_PATH`
+- `REDIS_URL`
+- `TASK_QUEUE_MODE`
+- `TASK_QUEUE_NAME`
 - `LLM_BASE_URL`
 - `LLM_MODEL`
 - `LLM_API_KEY`
@@ -158,11 +162,10 @@ The repository now has Dockerfile-based Railway deployment assets for the Sigma 
 
 - `docker-compose.yml`
 - process manager config
-- queue worker entrypoint
-- Redis queue/cache integration and repository support for `REDIS_URL`
+- Redis cache integration beyond task queue support
 - CI/CD deployment workflow
 
-Railway service shells created but not yet deployed:
+Railway service shells created but not yet fully deployed:
 
 - `agent-worker`
 - `trading-middleware-cloud`
@@ -249,7 +252,7 @@ The clean dependency install restored the missing `node_modules` files. The exis
 2. Deploy `sigma-dashboard` from `deploy/railway/sigma-dashboard.Dockerfile`.
 3. Keep the old SQLite Railway volume only as a temporary rollback artifact.
 4. Use the Postgres control store for identity, approvals, memory, strategies, journal/performance, paper orders, and sandbox write audit rows before multi-replica usage.
-5. Keep agent handlers in-process until a durable queue exists.
+5. Deploy `agent-worker`, set `TASK_QUEUE_MODE=redis` on `sigma-api`, and then evaluate increasing `sigma-api` replicas.
 6. Keep OpenD, broker desktop software, MFA sessions, and Hermes trading profile local.
 7. Audit Hermes default gateway separately before deploying it to Railway.
 8. Keep voice commands approval-gated until Hermes and live execution boundaries are explicitly approved.
