@@ -18,6 +18,7 @@
 // POST /v1/risk/position-size
 // POST /v1/risk/tp-sl
 // POST /v1/risk/trade-plan
+// POST /v1/webhooks/tradingview
 // GET  /v1/risk/contracts
 // POST /v1/workspaces
 // GET  /v1/workspaces/:id
@@ -138,6 +139,10 @@ import {
   HermesConfigError,
   HermesProviderError,
 } from '../../core/hermes/index.js';
+import {
+  buildTradingViewWebhookPlan,
+  TradingViewWebhookError,
+} from '../../core/webhooks/tradingview.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -148,7 +153,7 @@ const SESSION_MAX_AGE = 24 * 60 * 60;
 app.addHook('onRequest', async (req, reply) => {
   reply.header('Access-Control-Allow-Origin', process.env.DASHBOARD_ORIGIN ?? 'http://localhost:3000');
   reply.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  reply.header('Access-Control-Allow-Headers', 'Content-Type,x-user-id,x-workspace-id,Authorization');
+  reply.header('Access-Control-Allow-Headers', 'Content-Type,x-user-id,x-workspace-id,Authorization,x-sigma-webhook-secret');
   reply.header('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return reply.code(204).send();
 });
@@ -776,6 +781,101 @@ app.post<{ Body: {
     } catch (err) {
       if (err instanceof RiskError) return reply.code(400).send({ error: err.message, code: err.code });
       if (err instanceof StrategyError) return reply.code(err.code === 'STRATEGY_NOT_FOUND' ? 404 : 400).send({ error: err.message, code: err.code });
+      throw err;
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// TradingView webhook receiver
+// ---------------------------------------------------------------------------
+
+function optionalNumberEnv(name: string): number | undefined {
+  const value = process.env[name];
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function firstHeader(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function tradingViewWebhookSecret(req: { headers: Record<string, string | string[] | undefined> }, body: Record<string, unknown>): string | undefined {
+  const directHeader = firstHeader(req.headers['x-sigma-webhook-secret']);
+  if (directHeader) return directHeader;
+
+  const authHeader = firstHeader(req.headers['authorization']);
+  if (authHeader?.toLowerCase().startsWith('bearer ')) return authHeader.slice(7).trim();
+
+  const bodySecret = body.secret ?? body.webhookSecret ?? body.webhook_secret;
+  return typeof bodySecret === 'string' ? bodySecret : undefined;
+}
+
+app.post<{ Body: Record<string, unknown> }>(
+  '/v1/webhooks/tradingview',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: true,
+      },
+    },
+  },
+  async (req, reply) => {
+    const configuredSecret = process.env.TRADINGVIEW_WEBHOOK_SECRET;
+    if (!configuredSecret) {
+      return reply.code(503).send({ error: 'TradingView webhook is not configured', code: 'WEBHOOK_NOT_CONFIGURED' });
+    }
+
+    if (tradingViewWebhookSecret(req, req.body) !== configuredSecret) {
+      return reply.code(401).send({ error: 'invalid webhook secret', code: 'UNAUTHORIZED_WEBHOOK' });
+    }
+
+    try {
+      const alert = buildTradingViewWebhookPlan(req.body, {
+        accountSize: optionalNumberEnv('TRADINGVIEW_DEFAULT_ACCOUNT_SIZE'),
+        riskDollars: optionalNumberEnv('TRADINGVIEW_DEFAULT_RISK_DOLLARS'),
+        rrRatio: optionalNumberEnv('TRADINGVIEW_DEFAULT_RR'),
+      });
+      const plan = generateTradePlan(alert.planInput);
+      if (plan.blocked) {
+        return reply.code(422).send({
+          plan,
+          queued: false,
+          blockReasons: plan.blockReasons,
+          source: alert.source,
+        });
+      }
+
+      const approval = await requestApproval(
+        'sigma-risk',
+        'trade_plan',
+        `TradingView alert: ${plan.side.toUpperCase()} ${plan.contracts}x ${plan.symbol} @ ${plan.entry}`,
+        {
+          plan,
+          taskId: randomUUID(),
+          submittedBy: alert.submittedBy,
+          source: alert.source,
+          rawAlert: alert.rawAlert,
+          executionMode: 'approval_only',
+        },
+      );
+
+      return reply.code(202).send({
+        queued: true,
+        approvalId: approval.id,
+        plan,
+        source: alert.source,
+        executionMode: 'approval_only',
+      });
+    } catch (err) {
+      if (err instanceof TradingViewWebhookError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
+      if (err instanceof RiskError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
       throw err;
     }
   },
