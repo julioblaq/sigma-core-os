@@ -77,7 +77,7 @@ import {
   canManageMembers,
   OperatorError,
   type WorkspaceRole,
-} from '../../core/operators/index.js';
+} from '../../core/store/identity.js';
 import {
   createStrategy,
   getStrategy,
@@ -114,7 +114,7 @@ import {
   extractToken,
   AuthError,
   type User,
-} from '../../core/auth/index.js';
+} from '../../core/store/identity.js';
 import {
   buildJulesWork,
   type GitHubIssue,
@@ -168,7 +168,7 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
 
 // Get the authenticated user from session cookie or Authorization header
 // Returns null if not authenticated
-function getAuthedUser(req: { headers: Record<string, string | string[] | undefined> }): User | null {
+async function getAuthedUser(req: { headers: Record<string, string | string[] | undefined> }): Promise<User | null> {
   const cookieHeader = req.headers['cookie'] as string | undefined;
   const authHeader = req.headers['authorization'] as string | undefined;
   const cookies = parseCookies(cookieHeader);
@@ -177,8 +177,8 @@ function getAuthedUser(req: { headers: Record<string, string | string[] | undefi
 }
 
 // Backward-compat: if authenticated use authed user id, else fall back to x-user-id header stub
-function getUserId(req: { headers: Record<string, string | string[] | undefined> }): string {
-  const authed = getAuthedUser(req);
+async function getUserId(req: { headers: Record<string, string | string[] | undefined> }): Promise<string> {
+  const authed = await getAuthedUser(req);
   if (authed) return authed.id;
   const h = req.headers['x-user-id'];
   return (Array.isArray(h) ? h[0] : h) ?? 'anonymous';
@@ -237,14 +237,14 @@ app.post('/v1/auth/logout', async (req, reply) => {
   const cookies = parseCookies(req.headers['cookie'] as string | undefined);
   const authHeader = req.headers['authorization'] as string | undefined;
   const token = extractToken(cookies, authHeader);
-  if (token) logout(token);
+  if (token) await logout(token);
   reply.header('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`);
   return reply.code(200).send({ ok: true });
 });
 
 // GET /v1/auth/me
 app.get('/v1/auth/me', async (req, reply) => {
-  const user = getAuthedUser(req as Parameters<typeof getAuthedUser>[0]);
+  const user = await getAuthedUser(req as Parameters<typeof getAuthedUser>[0]);
   if (!user) return reply.code(401).send({ error: 'not authenticated', code: 'UNAUTHENTICATED' });
   return { user };
 });
@@ -290,14 +290,14 @@ app.post<{
   async (req, reply) => {
     const { approved, reason } = req.body;
     // Use authenticated user id for audit trail; fall back to resolvedBy override or x-user-id stub
-    const userId = getUserId(req as Parameters<typeof getUserId>[0]);
+    const userId = await getUserId(req as Parameters<typeof getUserId>[0]);
     const resolvedBy = req.body.resolvedBy ?? userId;
 
     const workspaceId = req.headers['x-workspace-id'];
     if (workspaceId && typeof workspaceId === 'string') {
-      const ws = getWorkspace(workspaceId);
+      const ws = await getWorkspace(workspaceId);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      const member = getMember(workspaceId, userId);
+      const member = await getMember(workspaceId, userId);
       if (!member) return reply.code(403).send({ error: 'not a member of this workspace' });
       if (!canApprove(member.role)) {
         return reply.code(403).send({ error: `role '${member.role}' cannot approve or deny actions` });
@@ -458,7 +458,7 @@ app.post<{
     const transcript = req.body.transcript.trim();
     if (!transcript) return reply.code(400).send({ error: 'transcript is required' });
 
-    const submittedBy = getUserId(req as Parameters<typeof getUserId>[0]);
+    const submittedBy = await getUserId(req as Parameters<typeof getUserId>[0]);
     const approval = await requestApproval(
       'sigma-voice',
       'voice_task_draft',
@@ -537,7 +537,7 @@ app.post<{
     const prompt = req.body.prompt.trim();
     if (!prompt) return reply.code(400).send({ error: 'prompt is required' });
 
-    const submittedBy = req.body.submittedBy ?? getUserId(req as Parameters<typeof getUserId>[0]);
+    const submittedBy = req.body.submittedBy ?? await getUserId(req as Parameters<typeof getUserId>[0]);
     const approval = await requestApproval(
       'sigma-hermes',
       'hermes_chat',
@@ -774,8 +774,8 @@ app.post<{ Body: { name: string } }>(
   { schema: { body: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } } } },
   async (req, reply) => {
     try {
-      const userId = getUserId(req as Parameters<typeof getUserId>[0]);
-      const result = createWorkspace(req.body.name, userId);
+      const userId = await getUserId(req as Parameters<typeof getUserId>[0]);
+      const result = await createWorkspace(req.body.name, userId);
       return reply.code(201).send(result);
     } catch (err) {
       if (err instanceof OperatorError) {
@@ -787,14 +787,14 @@ app.post<{ Body: { name: string } }>(
 );
 
 app.get<{ Params: { id: string } }>('/v1/workspaces/:id', async (req, reply) => {
-  const ws = getWorkspace(req.params.id);
+  const ws = await getWorkspace(req.params.id);
   if (!ws) return reply.code(404).send({ error: 'workspace not found' });
   return ws;
 });
 
 app.get<{ Params: { id: string } }>('/v1/workspaces/:id/members', async (req, reply) => {
   try {
-    return getMembers(req.params.id);
+    return await getMembers(req.params.id);
   } catch (err) {
     if (err instanceof OperatorError) return reply.code(404).send({ error: err.message, code: err.code });
     throw err;
@@ -807,14 +807,14 @@ app.post<{ Params: { id: string }; Body: { userId: string; role: WorkspaceRole }
     properties: { userId: { type: 'string' }, role: { type: 'string' } } } } },
   async (req, reply) => {
     try {
-      const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
-      const ws = getWorkspace(req.params.id);
+      const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
+      const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      const requester = getMember(req.params.id, requesterId);
+      const requester = await getMember(req.params.id, requesterId);
       if (!requester || !canManageMembers(requester.role)) {
         return reply.code(403).send({ error: 'only admins can manage workspace members' });
       }
-      const member = addMember(req.params.id, req.body.userId, req.body.role);
+      const member = await addMember(req.params.id, req.body.userId, req.body.role);
       return reply.code(201).send(member);
     } catch (err) {
       if (err instanceof OperatorError) {
@@ -837,7 +837,7 @@ app.get<{ Params: { id: string }; Querystring: { includeArchived?: string } }>(
   '/v1/workspaces/:id/strategies',
   async (req, reply) => {
     try {
-      const ws = getWorkspace(req.params.id);
+      const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
       return listStrategies(req.params.id, req.query.includeArchived === 'true');
     } catch (err) {
@@ -863,10 +863,10 @@ app.post<{ Params: { id: string }; Body: {
     } } } },
   async (req, reply) => {
     try {
-      const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
-      const ws = getWorkspace(req.params.id);
+      const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
+      const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      const requester = getMember(req.params.id, requesterId);
+      const requester = await getMember(req.params.id, requesterId);
       if (!requester || requester.role === 'viewer') {
         return reply.code(403).send({ error: 'viewers cannot create strategies' });
       }
@@ -904,10 +904,10 @@ app.patch<{ Params: { id: string }; Body: {
     } } } },
   async (req, reply) => {
     try {
-      const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
+      const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
       const strategy = getStrategy(req.params.id);
       if (!strategy) return reply.code(404).send({ error: 'strategy not found' });
-      const requester = getMember(strategy.workspaceId, requesterId);
+      const requester = await getMember(strategy.workspaceId, requesterId);
       if (!requester || requester.role === 'viewer') {
         return reply.code(403).send({ error: 'viewers cannot update strategies' });
       }
@@ -926,10 +926,10 @@ app.patch<{ Params: { id: string }; Body: {
 
 app.delete<{ Params: { id: string } }>('/v1/strategies/:id', async (req, reply) => {
   try {
-    const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
+    const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
     const strategy = getStrategy(req.params.id);
     if (!strategy) return reply.code(404).send({ error: 'strategy not found' });
-    const requester = getMember(strategy.workspaceId, requesterId);
+    const requester = await getMember(strategy.workspaceId, requesterId);
     if (!requester || !canManageMembers(requester.role)) {
       return reply.code(403).send({ error: 'only admins can archive strategies' });
     }
@@ -951,7 +951,7 @@ app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
   '/v1/workspaces/:id/journal',
   async (req, reply) => {
     try {
-      const ws = getWorkspace(req.params.id);
+      const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
       return listJournalEntries(req.params.id, req.query.strategyId);
     } catch (err) {
@@ -975,10 +975,10 @@ app.post<{ Params: { id: string }; Body: {
     } } } },
   async (req, reply) => {
     try {
-      const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
-      const ws = getWorkspace(req.params.id);
+      const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
+      const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      const requester = getMember(req.params.id, requesterId);
+      const requester = await getMember(req.params.id, requesterId);
       if (!requester) return reply.code(403).send({ error: 'not a member of this workspace' });
       const entry = createJournalEntry({ workspaceId: req.params.id, ...req.body });
       return reply.code(201).send(entry);
@@ -1011,12 +1011,12 @@ app.post<{ Params: { id: string }; Body: {
     } } } },
   async (req, reply) => {
     try {
-      const requesterId = getUserId(req as Parameters<typeof getUserId>[0]);
+      const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
       const entry = getJournalEntry(req.params.id);
       if (!entry) return reply.code(404).send({ error: 'journal entry not found' });
       const workspaceId = req.headers['x-workspace-id'];
       if (workspaceId && typeof workspaceId === 'string') {
-        const member = getMember(workspaceId, requesterId);
+        const member = await getMember(workspaceId, requesterId);
         if (!member) return reply.code(403).send({ error: 'not a member of this workspace' });
         if (!canApprove(member.role)) {
           return reply.code(403).send({ error: `role '${member.role}' cannot close journal entries` });
@@ -1037,7 +1037,7 @@ app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
   '/v1/workspaces/:id/journal/summary',
   async (req, reply) => {
     try {
-      const ws = getWorkspace(req.params.id);
+      const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
       return getJournalSummary(req.params.id, req.query.strategyId);
     } catch (err) {
@@ -1068,7 +1068,7 @@ function perfFilter(workspaceId: string, q: PerfQuery): PerformanceFilter {
 app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   '/v1/workspaces/:id/performance/summary',
   async (req, reply) => {
-    const ws = getWorkspace(req.params.id);
+    const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
     return getPerformanceSummary(perfFilter(req.params.id, req.query));
   },
@@ -1078,7 +1078,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
 app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   '/v1/workspaces/:id/performance/equity',
   async (req, reply) => {
-    const ws = getWorkspace(req.params.id);
+    const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
     return getEquityCurve(perfFilter(req.params.id, req.query));
   },
@@ -1088,7 +1088,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
 app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   '/v1/workspaces/:id/performance/drawdown',
   async (req, reply) => {
-    const ws = getWorkspace(req.params.id);
+    const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
     return getDrawdown(perfFilter(req.params.id, req.query));
   },
@@ -1098,7 +1098,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
 app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   '/v1/workspaces/:id/performance/calendar',
   async (req, reply) => {
-    const ws = getWorkspace(req.params.id);
+    const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
     return getCalendar(perfFilter(req.params.id, req.query));
   },
@@ -1108,7 +1108,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
 app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   '/v1/workspaces/:id/performance/breakdown',
   async (req, reply) => {
-    const ws = getWorkspace(req.params.id);
+    const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
     return getBreakdown(perfFilter(req.params.id, req.query));
   },
