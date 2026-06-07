@@ -22,7 +22,8 @@ Status: Cloud migration baseline is live.
 | TradingView webhook | `sigma-api` `/v1/webhooks/tradingview` | Approval-only; no broker execution. |
 | Simulated trading alert | `sigma-api` `/v1/trading/simulated-alert` and dashboard `/trading` | Approval-only; no market or broker dependency. |
 | Nova voice trading draft | `sigma-api` `/v1/voice/draft-simulated-trade` and dashboard `/trading` | Turns speech/transcript into a simulated trade approval. |
-| Task queue | `sigma-api` + `agent-worker` + `Redis` | API enqueues, worker executes router, results stored in Redis. |
+| Nova operator query/journal | `sigma-api` `/v1/nova/query` and `/v1/nova/journal` | Query returns non-executable intent; journal stores durable notes and screenshot pointers. |
+| Task queue | `sigma-api` + `agent-worker` + `Redis` | API enqueues, worker records queued/running/succeeded/failed status, dashboard lists recent jobs. |
 
 ## Removed Railway Resources
 

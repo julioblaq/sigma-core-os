@@ -1,5 +1,5 @@
 import { RedisConnection, redisUrl } from '../../core/queue/redis.js';
-import { popTask, recordTaskFailure, recordTaskResult } from '../../core/queue/tasks.js';
+import { popTask, recordTaskFailure, recordTaskResult, recordTaskRunning } from '../../core/queue/tasks.js';
 import { route } from '../../core/router/index.js';
 
 let running = true;
@@ -17,6 +17,7 @@ async function main(): Promise<void> {
     if (!task) continue;
     console.log(`[agent-worker] received task=${task.id} type=${task.type}`);
     try {
+      await recordTaskRunning(redis, task);
       const result = await route(task);
       await recordTaskResult(redis, result);
       console.log(`[agent-worker] completed task=${task.id} status=${result.status}`);

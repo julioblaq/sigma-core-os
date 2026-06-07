@@ -50,6 +50,7 @@ REDIS_URL=<Railway Redis private/internal URL>
 TASK_QUEUE_MODE=redis
 TASK_QUEUE_NAME=sigma:tasks
 SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox
+TRADING_MODE=dry-run
 DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
@@ -191,6 +192,18 @@ POST /v1/webhooks/tradingview
 ```
 
 This endpoint is approval-only. It generates a deterministic risk plan, queues it for human approval, and never submits an order to a broker.
+
+Current safety mode can be checked with:
+
+```text
+GET /v1/trading/config
+```
+
+Production should keep:
+
+```text
+TRADING_MODE=dry-run
+```
 
 Required Railway variable:
 
