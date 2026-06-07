@@ -8,6 +8,7 @@
 // GET  /v1/auth/me
 // POST /v1/task
 // GET  /v1/task/:id
+// GET  /v1/tasks
 // GET  /v1/approvals
 // GET  /v1/approvals/history
 // GET  /v1/approvals/:id
@@ -18,6 +19,7 @@
 // POST /v1/risk/position-size
 // POST /v1/risk/tp-sl
 // POST /v1/risk/trade-plan
+// GET  /v1/trading/config
 // POST /v1/trading/simulated-alert
 // POST /v1/webhooks/tradingview
 // GET  /v1/risk/contracts
@@ -40,6 +42,8 @@
 // POST /v1/voice/speech
 // POST /v1/voice/draft-task
 // POST /v1/voice/draft-simulated-trade
+// POST /v1/nova/query
+// POST /v1/nova/journal
 // GET  /v1/hermes/config
 // GET  /v1/hermes/status
 // GET  /v1/hermes/models
@@ -51,7 +55,7 @@
 
 import Fastify, { type FastifyReply } from 'fastify';
 import { randomUUID } from 'crypto';
-import { dispatchTask, getTaskResult } from '../../core/queue/tasks.js';
+import { dispatchTask, getTaskResult, listTaskStatuses } from '../../core/queue/tasks.js';
 import {
   listPending,
   getApproval,
@@ -137,6 +141,12 @@ import {
   parseVoiceTradeDraft,
   VoiceTradeParseError,
 } from '../../core/voice/trading.js';
+import {
+  answerNovaQuery,
+  createNovaJournalEntry,
+  type NovaJournalInput,
+  type NovaQueryInput,
+} from '../../core/nova/index.js';
 import {
   getHermesConfig,
   getHermesStatus,
@@ -295,6 +305,19 @@ app.get<{ Params: { id: string } }>(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return reply.code(503).send({ taskId: req.params.id, status: 'unavailable', error: message });
+    }
+  },
+);
+
+app.get<{ Querystring: { limit?: string } }>(
+  '/v1/tasks',
+  async (req, reply) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      return { tasks: await listTaskStatuses(Number.isFinite(limit) ? limit : 50) };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(503).send({ tasks: [], status: 'unavailable', error: message });
     }
   },
 );
@@ -557,7 +580,7 @@ app.post<{
           transcript: draft.transcript,
           assumptions: draft.assumptions,
           source: 'nova_voice',
-          executionMode: 'approval_only',
+          ...tradingSafetyConfig(),
         });
       }
 
@@ -586,7 +609,7 @@ app.post<{
         transcript: draft.transcript,
         assumptions: draft.assumptions,
         source: 'nova_voice',
-        executionMode: 'approval_only',
+        ...tradingSafetyConfig(),
       });
     } catch (err) {
       if (err instanceof VoiceTradeParseError) {
@@ -600,6 +623,67 @@ app.post<{
       }
       throw err;
     }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Nova
+// ---------------------------------------------------------------------------
+
+app.post<{ Body: NovaQueryInput }>(
+  '/v1/nova/query',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['transcript'],
+        additionalProperties: true,
+        properties: {
+          sessionId: { type: 'string' },
+          transcript: { type: 'string' },
+          screenshotBase64: { type: 'string' },
+          activeApp: { type: 'string' },
+          activeWindowTitle: { type: 'string' },
+          context: { type: 'object', additionalProperties: true },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      return answerNovaQuery(req.body);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: message, code: 'NOVA_QUERY_ERROR' });
+    }
+  },
+);
+
+app.post<{ Body: NovaJournalInput }>(
+  '/v1/nova/journal',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          sessionId: { type: 'string' },
+          transcript: { type: 'string' },
+          screenshotBase64: { type: 'string' },
+          screenshotPointer: { type: 'string' },
+          activeApp: { type: 'string' },
+          activeWindowTitle: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+          notes: { type: 'string' },
+          context: { type: 'object', additionalProperties: true },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const writtenBy = await getUserId(req as Parameters<typeof getUserId>[0]);
+    const entry = await createNovaJournalEntry(req.body, writtenBy);
+    return reply.code(201).send({ entry });
   },
 );
 
@@ -897,6 +981,8 @@ app.post<{ Body: {
 // Simulated trading alert receiver
 // ---------------------------------------------------------------------------
 
+app.get('/v1/trading/config', async () => tradingSafetyConfig());
+
 app.post<{ Body: SimulatedAlertInput }>(
   '/v1/trading/simulated-alert',
   {
@@ -934,7 +1020,7 @@ app.post<{ Body: SimulatedAlertInput }>(
           queued: false,
           blockReasons: plan.blockReasons,
           source: alert.source,
-          executionMode: 'approval_only',
+          ...tradingSafetyConfig(),
         });
       }
 
@@ -957,7 +1043,7 @@ app.post<{ Body: SimulatedAlertInput }>(
         approvalId: approval.id,
         plan,
         source: alert.source,
-        executionMode: 'approval_only',
+        ...tradingSafetyConfig(),
       });
     } catch (err) {
       if (err instanceof SimulatedAlertError) {
@@ -980,6 +1066,20 @@ function optionalNumberEnv(name: string): number | undefined {
   if (!value) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function tradingMode(): 'dry-run' | 'live' {
+  const raw = (process.env.TRADING_MODE ?? 'dry-run').trim().toLowerCase();
+  return raw === 'live' ? 'live' : 'dry-run';
+}
+
+function tradingSafetyConfig() {
+  return {
+    tradingMode: tradingMode(),
+    executionMode: 'approval_only',
+    brokerExecution: false,
+    liveBrokerSupported: false,
+  };
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {
@@ -1030,6 +1130,7 @@ app.post<{ Body: Record<string, unknown> }>(
           queued: false,
           blockReasons: plan.blockReasons,
           source: alert.source,
+          ...tradingSafetyConfig(),
         });
       }
 
@@ -1052,7 +1153,7 @@ app.post<{ Body: Record<string, unknown> }>(
         approvalId: approval.id,
         plan,
         source: alert.source,
-        executionMode: 'approval_only',
+        ...tradingSafetyConfig(),
       });
     } catch (err) {
       if (err instanceof TradingViewWebhookError) {
