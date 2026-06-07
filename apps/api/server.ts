@@ -7,6 +7,7 @@
 // POST /v1/auth/logout
 // GET  /v1/auth/me
 // POST /v1/task
+// GET  /v1/task/:id
 // GET  /v1/approvals
 // GET  /v1/approvals/history
 // GET  /v1/approvals/:id
@@ -47,7 +48,7 @@
 
 import Fastify, { type FastifyReply } from 'fastify';
 import { randomUUID } from 'crypto';
-import { dispatchTask } from '../../core/queue/tasks.js';
+import { dispatchTask, getTaskResult } from '../../core/queue/tasks.js';
 import {
   listPending,
   getApproval,
@@ -265,6 +266,20 @@ app.post<{ Body: { type: string; payload: Record<string, unknown>; submittedBy?:
     };
     const result = await dispatchTask(task);
     return reply.code(result.status === 'error' ? 400 : 202).send(result);
+  },
+);
+
+app.get<{ Params: { id: string } }>(
+  '/v1/task/:id',
+  async (req, reply) => {
+    try {
+      const result = await getTaskResult(req.params.id);
+      if (!result) return reply.code(404).send({ taskId: req.params.id, status: 'not_found' });
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(503).send({ taskId: req.params.id, status: 'unavailable', error: message });
+    }
   },
 );
 

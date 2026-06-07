@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import {
   dispatchTask,
   enqueueTask,
+  getTaskResult,
   popTask,
   recordTaskFailure,
   recordTaskResult,
@@ -109,7 +110,38 @@ describe('task queue', () => {
 
     assert.equal(redis.commands[0][0], 'SET');
     assert.equal(redis.commands[0][1], `sigma:task-result:${task.id}`);
-    assert.equal(redis.commands[1][0], 'LPUSH');
-    assert.equal(redis.commands[1][1], 'sigma:test-tasks:dead');
+    assert.equal(redis.commands[1][0], 'SET');
+    assert.equal(redis.commands[1][1], `sigma:task-result:${task.id}`);
+    assert.equal(redis.commands[2][0], 'LPUSH');
+    assert.equal(redis.commands[2][1], 'sigma:test-tasks:dead');
+  });
+
+  it('reads recorded task results by id', async () => {
+    const redis = new FakeRedis();
+    const task = makeTask('dev_task');
+    redis.nextResponse = JSON.stringify({
+      taskId: task.id,
+      agent: 'sigma-dev',
+      status: 'complete',
+      result: { ok: true },
+      completedAt: new Date().toISOString(),
+    });
+
+    const result = await getTaskResult(task.id, redis);
+
+    assert.equal(result?.taskId, task.id);
+    assert.equal(result?.status, 'complete');
+    assert.equal(redis.closed, true);
+    assert.deepEqual(redis.commands[0], ['GET', `sigma:task-result:${task.id}`]);
+  });
+
+  it('returns null for missing task result', async () => {
+    const redis = new FakeRedis();
+    redis.nextResponse = null;
+
+    const result = await getTaskResult('missing-task', redis);
+
+    assert.equal(result, null);
+    assert.equal(redis.closed, true);
   });
 });

@@ -7,6 +7,7 @@ const LINKS = [
   { href: '/mindlyft', label: 'MindLyft' },
   { href: '/voice', label: 'Voice' },
   { href: '/hermes', label: 'Hermes' },
+  { href: '/tasks', label: 'Tasks' },
   { href: '/approvals', label: 'Approvals' },
   { href: '/log', label: 'Runtime Log' },
   { href: '/memory', label: 'Memory' },
