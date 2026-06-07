@@ -139,6 +139,7 @@ import {
 } from '../../core/voice/index.js';
 import {
   parseVoiceTradeDraft,
+  formatVoiceTradeCoachCopy,
   VoiceTradeParseError,
 } from '../../core/voice/trading.js';
 import {
@@ -571,6 +572,7 @@ app.post<{
       });
       const alert = buildSimulatedAlertPlan({ ...draft.input, submittedBy: 'nova-voice' });
       const plan = generateTradePlan(alert.planInput);
+      const coachCopy = formatVoiceTradeCoachCopy(plan, draft.assumptions, !plan.blocked);
 
       if (plan.blocked) {
         return reply.code(422).send({
@@ -580,6 +582,7 @@ app.post<{
           transcript: draft.transcript,
           assumptions: draft.assumptions,
           source: 'nova_voice',
+          ...coachCopy,
           ...tradingSafetyConfig(),
         });
       }
@@ -598,6 +601,9 @@ app.post<{
             parsed: alert.rawAlert,
             assumptions: draft.assumptions,
           },
+          answer: coachCopy.answer,
+          voiceText: coachCopy.voiceText,
+          highlights: coachCopy.highlights,
           executionMode: 'approval_only',
         },
       );
@@ -609,6 +615,7 @@ app.post<{
         transcript: draft.transcript,
         assumptions: draft.assumptions,
         source: 'nova_voice',
+        ...coachCopy,
         ...tradingSafetyConfig(),
       });
     } catch (err) {

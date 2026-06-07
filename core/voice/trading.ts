@@ -1,4 +1,5 @@
 import type { SimulatedAlertInput } from '../webhooks/simulated.js';
+import type { TradePlanResult } from '../risk/index.js';
 
 export interface VoiceTradeDefaults {
   accountSize?: number;
@@ -10,6 +11,24 @@ export interface VoiceTradeDraft {
   input: SimulatedAlertInput;
   transcript: string;
   assumptions: string[];
+}
+
+export interface VoiceTradeHighlight {
+  label: string;
+  value: string;
+  target: 'order-ticket' | 'risk-panel';
+  placement: 'side-panel' | 'bottom-right';
+  tone: 'info' | 'warning';
+  priority: number;
+  durationMs: number;
+  avoidCriticalControls: true;
+  blocksInteraction: false;
+}
+
+export interface VoiceTradeCoachCopy {
+  answer: string;
+  voiceText: string;
+  highlights: VoiceTradeHighlight[];
 }
 
 export class VoiceTradeParseError extends Error {
@@ -150,3 +169,53 @@ export function parseVoiceTradeDraft(
   };
 }
 
+function dollars(value: number): string {
+  return `$${value.toFixed(value % 1 === 0 ? 0 : 2)}`;
+}
+
+function price(value: number): string {
+  return value.toFixed(value % 1 === 0 ? 0 : 2);
+}
+
+export function formatVoiceTradeCoachCopy(
+  plan: TradePlanResult,
+  assumptions: string[] = [],
+  queued: boolean,
+): VoiceTradeCoachCopy {
+  const side = plan.side.toUpperCase();
+  const queueLine = queued ? 'Draft queued for approval.' : 'Draft blocked.';
+  const assumptionLine = assumptions.length ? ` ${assumptions.join('; ')}.` : '';
+  const riskLine = `${dollars(plan.riskDollars)} risk, ${plan.riskPercent.toFixed(2)}% account risk`;
+
+  const answer = `${plan.symbol} ${side}: ${plan.contracts}x @ ${price(plan.entry)}. Stop ${price(plan.stop)}, target ${price(plan.target)}. ${riskLine}. ${queueLine}${assumptionLine}`;
+  const voiceText = `${plan.symbol} ${side}, ${plan.contracts} contracts at ${price(plan.entry)}. Stop ${price(plan.stop)}, target ${price(plan.target)}. ${queueLine} No broker order sent.`;
+
+  return {
+    answer,
+    voiceText,
+    highlights: [
+      {
+        label: 'Draft',
+        value: `${plan.symbol} ${side} ${plan.contracts}x`,
+        target: 'order-ticket',
+        placement: 'side-panel',
+        tone: 'info',
+        priority: 1,
+        durationMs: 5200,
+        avoidCriticalControls: true,
+        blocksInteraction: false,
+      },
+      {
+        label: 'Risk',
+        value: `${dollars(plan.riskDollars)} / ${plan.riskPercent.toFixed(2)}%`,
+        target: 'risk-panel',
+        placement: 'bottom-right',
+        tone: plan.warnings.length || plan.blocked ? 'warning' : 'info',
+        priority: 2,
+        durationMs: 5200,
+        avoidCriticalControls: true,
+        blocksInteraction: false,
+      },
+    ],
+  };
+}
