@@ -143,7 +143,7 @@ all other current Sigma tables: 0 -> 0
 verify-only pass: ok
 ```
 
-Runtime Postgres support now exists for the Sigma control and identity stores:
+Runtime Postgres support now exists for the Sigma control, identity, and trading stores:
 
 ```text
 SIGMA_CONTROL_STORE=postgres
@@ -158,13 +158,14 @@ This switch moves these API and agent surfaces to Railway Postgres:
 - Hermes approval dispatch lookup
 - voice task draft approvals
 - risk trade-plan approvals
+- strategy profile reads/writes
+- journal entry reads/writes
+- performance analytics over closed journal entries
 - Sigma Bot and Sigma Dev memory writes
 - outcome log reads/searches/writes
 
 These surfaces still use SQLite until their repository modules are converted:
 
-- strategies
-- journal and performance
 - paper orders
 - sandbox writes
 
