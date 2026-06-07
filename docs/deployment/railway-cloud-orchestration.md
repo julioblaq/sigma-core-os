@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-06
-Status: Initial Railway cutover completed for Sigma API, dashboard, and secured Hermes API server.
+Status: Initial Railway cutover completed for Sigma API, dashboard, Redis-backed worker, Postgres runtime store, and secured Hermes API server.
 
 ## Goal
 
@@ -62,12 +62,10 @@ Before deployment, confirm the default profile does not require local GUI sessio
 
 ### Wave 3: Evaluate Later
 
-- Dedicated worker process
-- Redis queue integration against the managed Railway `Redis` service for `/v1/task`
-- PostgreSQL migration against the managed Railway `Postgres` service
 - Cloud-safe MCP servers
-- Webhook receivers
-- Trading middleware
+- Separate trading middleware service, only if the approval-only routes in `sigma-api` are no longer enough
+- Redis cache integration beyond the task queue
+- CI/CD deployment workflow
 
 ## Railway Configuration
 
@@ -86,11 +84,11 @@ Live services:
 | `sigma-api` | Deployed | `https://sigma-api-production-b005.up.railway.app` |
 | `sigma-dashboard` | Deployed | `https://sigma-dashboard-production-a7a7.up.railway.app` |
 | `hermes-agent` | Deployed | `https://hermes-agent-production-62ee.up.railway.app` |
-| `agent-worker` | Redis worker Dockerfile ready | Deploy with `RAILWAY_DOCKERFILE_PATH=deploy/railway/agent-worker.Dockerfile` |
+| `agent-worker` | Deployed | Redis-backed worker consuming `sigma:tasks`; no public URL. |
 | TradingView webhook middleware | Implemented in `sigma-api` | Approval-only receiver at `/v1/webhooks/tradingview`; no broker execution. |
 | Simulated trading ops | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` sends approval-only simulated alerts through `/v1/trading/simulated-alert`. |
 | Nova voice trading draft | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` records/transcribes speech, then `/v1/voice/draft-simulated-trade` parses it into an approval-only simulated trade plan. |
-| `trading-middleware-cloud` | Service shell only | Keep offline until a separate service is needed. |
+| `trading-middleware-cloud` | Parked empty shell | No source repo, no active deployment, no domain, one demo variable. Safe to delete after confirming Railway cleanup intent. |
 
 Create separate Railway services from the same GitHub repository for Sigma:
 

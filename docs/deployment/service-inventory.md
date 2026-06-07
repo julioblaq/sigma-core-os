@@ -158,17 +158,16 @@ Do not commit secret values. Put production values in Railway variables.
 
 ## Missing Deployment Assets
 
-The repository now has Dockerfile-based Railway deployment assets for the Sigma API and dashboard. It still lacks:
+The repository now has Dockerfile-based Railway deployment assets for the Sigma API, dashboard, and Redis-backed agent worker. It still lacks:
 
 - `docker-compose.yml`
 - process manager config
 - Redis cache integration beyond task queue support
 - CI/CD deployment workflow
 
-Railway service shells created but not yet fully deployed:
+Railway service shell parked:
 
-- `agent-worker`
-- `trading-middleware-cloud`
+- `trading-middleware-cloud`: empty service shell with no source repo, no active deployment, no domain, and only a demo variable. Middleware behavior currently lives in `sigma-api`.
 
 Hermes audit findings:
 
