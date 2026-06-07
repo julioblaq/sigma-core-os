@@ -2,19 +2,20 @@
 // Async control-plane store facade.
 //
 // SIGMA_CONTROL_STORE=postgres moves approvals, outcome_log, and memory to
-// Postgres. Default behavior remains the existing SQLite-backed modules.
+// Postgres through the shared runtime-store helper. Default behavior remains
+// the existing SQLite-backed modules.
 
 import { randomUUID } from 'crypto';
-import { Pool, type QueryResultRow } from 'pg';
-import { POSTGRES_SCHEMA_SQL } from '../db/postgres-schema.js';
+import type { QueryResultRow } from 'pg';
 import * as sqliteMemory from '../memory/index.js';
 import * as sqlitePolicies from '../policies/index.js';
 import * as sqliteRuntime from '../runtime/index.js';
 import type { MemEntry } from '../memory/index.js';
 import type { Approval, ApprovalStatus } from '../policies/index.js';
 import type { LogSearchParams, OutcomeEntry } from '../runtime/index.js';
+import { query, usingPostgresControlStore } from './postgres.js';
 
-type ControlStoreMode = 'sqlite' | 'postgres';
+export { controlStoreMode, usingPostgresControlStore } from './postgres.js';
 
 interface ApprovalRow extends QueryResultRow {
   id: string;
@@ -46,58 +47,6 @@ interface MemoryRow extends QueryResultRow {
   value: string;
   written_by: string;
   written_at: string;
-}
-
-let pool: Pool | undefined;
-let schemaReady: Promise<void> | undefined;
-
-export function controlStoreMode(): ControlStoreMode {
-  const raw = (process.env.SIGMA_CONTROL_STORE ?? 'sqlite').trim().toLowerCase();
-  if (raw === 'sqlite' || raw === 'postgres') return raw;
-  throw new Error(`Invalid SIGMA_CONTROL_STORE '${raw}'. Use 'sqlite' or 'postgres'.`);
-}
-
-export function usingPostgresControlStore(): boolean {
-  return controlStoreMode() === 'postgres';
-}
-
-function postgresConnectionString(): string {
-  const url =
-    process.env.DATABASE_URL ??
-    process.env.DATABASE_PUBLIC_URL ??
-    process.env.POSTGRES_MIGRATION_URL;
-
-  if (!url) {
-    throw new Error('SIGMA_CONTROL_STORE=postgres requires DATABASE_URL or DATABASE_PUBLIC_URL');
-  }
-  return url;
-}
-
-function getPool(): Pool {
-  if (!pool) {
-    pool = new Pool({ connectionString: postgresConnectionString() });
-  }
-  return pool;
-}
-
-async function ensurePostgresSchema(): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = (async () => {
-      const client = getPool();
-      for (const statement of POSTGRES_SCHEMA_SQL) {
-        await client.query(statement);
-      }
-    })().catch((err) => {
-      schemaReady = undefined;
-      throw err;
-    });
-  }
-  await schemaReady;
-}
-
-async function query<T extends QueryResultRow>(text: string, values: unknown[] = []) {
-  await ensurePostgresSchema();
-  return getPool().query<T>(text, values);
 }
 
 function orUndef(value: string | null | undefined): string | undefined {
