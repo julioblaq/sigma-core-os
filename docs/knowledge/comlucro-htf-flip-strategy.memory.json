@@ -1,0 +1,83 @@
+{
+  "id": "strategy:comlucro-htf-flip",
+  "title": "ComLucro HTF Flip Strategy",
+  "type": "sigma-bot-training-strategy",
+  "source": "user-provided transcript",
+  "status": "active",
+  "summary": "Wait for price to tap and reject a higher time frame POI, flip the latest main-time-frame supply or demand zone with displacement, return to the flip zone in premium/discount, then confirm entry on a lower time frame with MSS, VSR, breaker block, or mitigation block.",
+  "timeframes": {
+    "higher": "H4, H1, or M15 depending on trade profile",
+    "main": "M15 or M5 for structure and flip-zone detection",
+    "entry": "M1, M3, or M5 for confirmation and risk refinement"
+  },
+  "requiredConditions": [
+    "Higher time frame unmitigated supply, demand, or FVG is identified",
+    "Price taps and rejects the higher time frame area",
+    "Main time frame shows the latest opposing zone fail",
+    "Price breaks and closes through that zone with displacement",
+    "Flip leg leaves visible inefficiency or imbalance",
+    "Flip zone is in premium for shorts or discount for longs",
+    "Price returns to the flip zone",
+    "Entry time frame confirms with MSS, VSR, breaker block, or mitigation block",
+    "Risk engine and active strategy profile approve the plan"
+  ],
+  "bearishModel": {
+    "bias": "short",
+    "htfContext": "Price taps fresh or unmitigated higher time frame supply or bearish FVG and rejects.",
+    "mainTrigger": "Latest demand reacts weakly, then breaks and closes below with bearish displacement.",
+    "flipZone": "Last up-close candle or up-close candle cluster at the origin of bearish displacement.",
+    "preferredLocation": "premium",
+    "entryTrigger": "Entry-time-frame MSS, VSR, breaker block, or mitigation block after return to flip zone.",
+    "stop": "Above entry-time-frame higher high or above flip-zone invalidation.",
+    "target": "Sell-side liquidity below relevant swing low."
+  },
+  "bullishModel": {
+    "bias": "long",
+    "htfContext": "Price taps fresh or unmitigated higher time frame demand or bullish FVG and rejects.",
+    "mainTrigger": "Latest supply reacts weakly, then breaks and closes above with bullish displacement.",
+    "flipZone": "Last down-close candle or down-close candle cluster at the origin of bullish displacement.",
+    "preferredLocation": "discount",
+    "entryTrigger": "Entry-time-frame MSS, VSR, breaker block, or mitigation block after return to flip zone.",
+    "stop": "Below entry-time-frame lower low or below flip-zone invalidation.",
+    "target": "Buy-side liquidity above relevant swing high."
+  },
+  "invalidations": [
+    "No higher time frame POI tap",
+    "POI already heavily mitigated",
+    "No close through latest opposing supply or demand",
+    "Flip forms in the middle of nowhere",
+    "No displacement or inefficiency",
+    "Wrong premium/discount location",
+    "No return to flip zone",
+    "No lower time frame confirmation",
+    "Risk engine rejects position size, symbol, or account rule"
+  ],
+  "scoring": {
+    "maxScore": 10,
+    "aSetup": "8-10",
+    "bSetup": "6-7",
+    "noTrade": "below 6",
+    "points": [
+      "HTF POI tap and rejection: 2",
+      "Main time frame valid flip: 2",
+      "Correct premium or discount location: 1",
+      "Displacement and inefficiency: 1",
+      "Liquidity sweep or clear liquidity target: 1",
+      "Entry time frame MSS or VSR: 1",
+      "Breaker or mitigation block entry: 1",
+      "Minimum 2R and strategy risk compliance: 1"
+    ]
+  },
+  "journalTags": [
+    "model:comlucro-htf-flip",
+    "flip:bearish-demand-to-supply",
+    "flip:bullish-supply-to-demand",
+    "location:premium",
+    "location:discount",
+    "entry:breaker-block",
+    "entry:mitigation-block",
+    "entry:vsr",
+    "liquidity:sweep",
+    "quality:a-plus"
+  ]
+}
