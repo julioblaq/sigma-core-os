@@ -81,6 +81,39 @@ function resultSummary(input: { status: TaskStatus; agent?: string; error?: stri
   return `${agent}${input.status}`;
 }
 
+function routerStatusToTaskStatus(status: RouterResult['status']): TaskStatus {
+  return status === 'error' ? 'failed' : 'succeeded';
+}
+
+function taskStatusFromRouterResult(result: RouterResult, existing?: TaskStatusDocument | null): TaskStatusDocument {
+  const now = new Date().toISOString();
+  const timestamps = result as RouterResult & { completedAt?: string; failedAt?: string };
+  const status = routerStatusToTaskStatus(result.status);
+  const completedAt = status === 'succeeded' ? timestamps.completedAt ?? now : undefined;
+  const failedAt = status === 'failed' ? timestamps.failedAt ?? now : undefined;
+
+  return {
+    id: result.taskId,
+    taskId: result.taskId,
+    type: existing?.type ?? 'unknown',
+    status,
+    queue: existing?.queue ?? taskQueueName(),
+    agent: result.agent,
+    submitted_by: existing?.submitted_by ?? 'agent-worker',
+    created_at: existing?.created_at ?? completedAt ?? failedAt ?? now,
+    updated_at: completedAt ?? failedAt ?? now,
+    started_at: existing?.started_at,
+    completed_at: completedAt,
+    failed_at: failedAt,
+    completedAt,
+    failedAt,
+    result_summary: resultSummary({ status, agent: result.agent, error: result.error, result: result.result }),
+    result: result.result,
+    error: result.error,
+    approvalId: result.approvalId,
+  };
+}
+
 async function writeTaskStatus(redis: QueueRedis, doc: TaskStatusDocument): Promise<void> {
   const ttl = Number(process.env.TASK_RESULT_TTL_SECONDS ?? 86400);
   await redis.command('SET', taskStatusKey(doc.id), JSON.stringify(doc), 'EX', ttl);
@@ -90,6 +123,23 @@ async function readTaskStatus(redis: QueueRedis, taskId: string): Promise<TaskSt
   const raw = await redis.command('GET', taskStatusKey(taskId));
   if (typeof raw !== 'string') return null;
   return JSON.parse(raw) as TaskStatusDocument;
+}
+
+async function readLegacyTaskResult(redis: QueueRedis, taskId: string): Promise<RouterResult | null> {
+  const raw = await redis.command('GET', taskResultKey(taskId));
+  if (typeof raw !== 'string') return null;
+  return JSON.parse(raw) as RouterResult;
+}
+
+async function hydrateTaskStatus(redis: QueueRedis, doc: TaskStatusDocument): Promise<TaskStatusDocument> {
+  if (doc.status === 'succeeded' || doc.status === 'failed') return doc;
+
+  const legacy = await readLegacyTaskResult(redis, doc.id);
+  if (!legacy) return doc;
+
+  const hydrated = taskStatusFromRouterResult(legacy, doc);
+  await writeTaskStatus(redis, hydrated);
+  return hydrated;
 }
 
 export async function recordTaskQueued(task: Task, queue: string, redis: QueueRedis): Promise<TaskStatusDocument> {
@@ -168,28 +218,7 @@ export async function recordTaskRunning(redis: QueueRedis, task: Task): Promise<
 
 export async function recordTaskResult(redis: QueueRedis, result: RouterResult): Promise<void> {
   const existing = await readTaskStatus(redis, result.taskId);
-  const now = new Date().toISOString();
-  const status: TaskStatus = result.status === 'error' ? 'failed' : 'succeeded';
-  const doc: TaskStatusDocument = {
-    id: result.taskId,
-    taskId: result.taskId,
-    type: existing?.type ?? 'unknown',
-    status,
-    queue: existing?.queue ?? taskQueueName(),
-    agent: result.agent,
-    submitted_by: existing?.submitted_by ?? 'agent-worker',
-    created_at: existing?.created_at ?? now,
-    updated_at: now,
-    started_at: existing?.started_at,
-    completed_at: status === 'succeeded' ? now : undefined,
-    failed_at: status === 'failed' ? now : undefined,
-    completedAt: status === 'succeeded' ? now : undefined,
-    failedAt: status === 'failed' ? now : undefined,
-    result_summary: resultSummary({ status, agent: result.agent, error: result.error, result: result.result }),
-    result: result.result,
-    error: result.error,
-    approvalId: result.approvalId,
-  };
+  const doc = taskStatusFromRouterResult(result, existing);
   await writeTaskStatus(redis, doc);
   await redis.command('SET', taskResultKey(result.taskId), JSON.stringify({
     ...result,
@@ -235,11 +264,9 @@ export async function recordTaskFailure(redis: QueueRedis, task: Task, err: unkn
 export async function getTaskResult(taskId: string, redis: QueueRedis = new RedisConnection({ url: redisUrl() })): Promise<TaskStatusDocument | RouterResult | null> {
   try {
     const statusDoc = await readTaskStatus(redis, taskId);
-    if (statusDoc) return statusDoc;
+    if (statusDoc) return hydrateTaskStatus(redis, statusDoc);
 
-    const raw = await redis.command('GET', taskResultKey(taskId));
-    if (typeof raw !== 'string') return null;
-    return JSON.parse(raw) as RouterResult;
+    return readLegacyTaskResult(redis, taskId);
   } finally {
     redis.close();
   }
@@ -255,7 +282,7 @@ export async function listTaskStatuses(limit = 50, redis: QueueRedis = new Redis
     for (const id of ids) {
       if (typeof id !== 'string') continue;
       const doc = await readTaskStatus(redis, id);
-      if (doc) docs.push(doc);
+      if (doc) docs.push(await hydrateTaskStatus(redis, doc));
     }
     return docs;
   } finally {
