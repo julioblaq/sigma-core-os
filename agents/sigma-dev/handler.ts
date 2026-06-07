@@ -9,8 +9,8 @@
 // - LLM is used for reasoning/generation only.
 // - All file mutations are runtime-controlled after explicit approval.
 
-import { requestApproval, Approval } from '../../core/policies/index.js';
-import { memSet } from '../../core/memory/index.js';
+import type { Approval } from '../../core/policies/index.js';
+import { requestApproval, memSet } from '../../core/store/control.js';
 import { generateResponse } from '../../core/llm/index.js';
 import type { Task } from '../../core/router/index.js';
 
@@ -189,7 +189,7 @@ export async function handleTask(task: Task): Promise<SigmaDevResult> {
   // No write approval needed, just log to memory for audit
   // -------------------------------------------------------------------------
   if (!artifact.requiresWrite) {
-    memSet('sigma-dev', `artifact:${task.id}`, artifact, 'sigma-dev');
+    await memSet('sigma-dev', `artifact:${task.id}`, artifact, 'sigma-dev');
     console.log(`[sigma-dev] read-only action=${devAction} complete task=${task.id}`);
     return {
       status: 'complete',
@@ -201,12 +201,12 @@ export async function handleTask(task: Task): Promise<SigmaDevResult> {
   // Write actions - store artifact in memory, queue for human approval
   // NEVER write to disk here - runtime executes after approval
   // -------------------------------------------------------------------------
-  memSet('sigma-dev', `artifact:${task.id}`, artifact, 'sigma-dev');
+  await memSet('sigma-dev', `artifact:${task.id}`, artifact, 'sigma-dev');
 
   const approvalDescription =
     `[${devAction.toUpperCase()}] ${filePath ?? 'code artifact'}: ${spec?.slice(0, 80) ?? '(no spec)'}`;
 
-  const approval: Approval = requestApproval(
+  const approval: Approval = await requestApproval(
     'sigma-dev',
     devAction,
     approvalDescription,

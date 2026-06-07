@@ -115,7 +115,7 @@ Managed Railway databases are provisioned for the next migration step:
 
 | Service | Status | Notes |
 |---|---:|---|
-| `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Not yet used by Sigma code. |
+| `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Seeded from live `/data/sigma.db` and ready for the Sigma control store. |
 | `Redis` | Online | Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, backed by `redis-volume`. Not yet used by Sigma code. |
 
 The first migration layer is available as:
@@ -130,7 +130,7 @@ Safe sequence:
 2. Set `POSTGRES_MIGRATION_URL`, `DATABASE_PUBLIC_URL`, or `DATABASE_URL` outside git.
 3. Run `npm run db:migrate:postgres` to create schema, copy rows, and verify counts.
 4. Run `npm run db:migrate:postgres -- --verify-only` after any later copy.
-5. Keep `sigma-api` on SQLite until runtime Postgres support is implemented.
+5. Set `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` when ready to move approvals, memory, and outcome logs to Postgres.
 
 Production copy completed on 2026-06-06 from inside the Railway `sigma-api` console:
 
@@ -142,6 +142,31 @@ outcome_log: 1 -> 1
 all other current Sigma tables: 0 -> 0
 verify-only pass: ok
 ```
+
+Runtime Postgres support now exists for the Sigma control store only:
+
+```text
+SIGMA_CONTROL_STORE=postgres
+DATABASE_URL=<Railway Postgres private/internal URL>
+```
+
+This switch moves these API and agent surfaces to Railway Postgres:
+
+- approvals and approval history
+- Hermes approval dispatch lookup
+- voice task draft approvals
+- risk trade-plan approvals
+- Sigma Bot and Sigma Dev memory writes
+- outcome log reads/searches/writes
+
+These surfaces still use SQLite until their repository modules are converted:
+
+- auth and sessions
+- workspaces and members
+- strategies
+- journal and performance
+- paper orders
+- sandbox writes
 
 ## Variables
 
@@ -167,7 +192,10 @@ HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
 HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
 HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
+SIGMA_CONTROL_STORE=sqlite
 ```
+
+Use `SIGMA_CONTROL_STORE=postgres` only after `DATABASE_URL` points at the managed Railway Postgres service.
 
 ### `sigma-dashboard`
 
@@ -331,7 +359,7 @@ Today is successful when:
 ## Open Cloud Follow-Ups
 
 - Monitor `/data/sigma.db` persistence across redeploys.
-- Add runtime Postgres support and move durable reads/writes from `/data/sigma.db` to managed Railway `Postgres`.
+- Convert the remaining SQLite-backed modules to Postgres after the control-store switch is stable.
 - Add Redis queue/cache integration against managed Railway `Redis`.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.

@@ -48,9 +48,17 @@
 import Fastify, { type FastifyReply } from 'fastify';
 import { randomUUID } from 'crypto';
 import { route } from '../../core/router/index.js';
-import { listPending, getApproval, resolveApproval, listAll, requestApproval } from '../../core/policies/index.js';
-import { logOutcome, getLog, searchLog } from '../../core/runtime/index.js';
-import { memList } from '../../core/memory/index.js';
+import {
+  listPending,
+  getApproval,
+  resolveApproval,
+  listAll,
+  requestApproval,
+  logOutcome,
+  getLog,
+  searchLog,
+  memList,
+} from '../../core/store/control.js';
 import {
   calcPositionSize,
   calcTPSL,
@@ -267,7 +275,7 @@ app.get('/v1/approvals', async () => listPending());
 app.get('/v1/approvals/history', async () => listAll());
 
 app.get<{ Params: { id: string } }>('/v1/approvals/:id', async (req, reply) => {
-  const approval = getApproval(req.params.id);
+  const approval = await getApproval(req.params.id);
   if (!approval) return reply.code(404).send({ error: 'not found' });
   return approval;
 });
@@ -299,9 +307,9 @@ app.post<{
     if (!approved && !reason) {
       return reply.code(400).send({ error: 'reason is required when denying an approval' });
     }
-    const updated = resolveApproval(req.params.id, approved, resolvedBy, reason);
+    const updated = await resolveApproval(req.params.id, approved, resolvedBy, reason);
     if (!updated) return reply.code(404).send({ error: 'approval not found or already resolved' });
-    const outcome = logOutcome(updated, updated.action);
+    const outcome = await logOutcome(updated, updated.action);
     return reply.code(200).send({ approval: updated, outcome });
   },
 );
@@ -338,7 +346,8 @@ app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
   const ns = req.query.namespace;
   if (ns) return memList(ns);
   const namespaces = ['sigma-bot', 'sigma-dev', 'sigma-risk'];
-  return namespaces.flatMap(n => memList(n));
+  const entries = await Promise.all(namespaces.map(n => memList(n)));
+  return entries.flat();
 });
 
 // ---------------------------------------------------------------------------
@@ -450,7 +459,7 @@ app.post<{
     if (!transcript) return reply.code(400).send({ error: 'transcript is required' });
 
     const submittedBy = getUserId(req as Parameters<typeof getUserId>[0]);
-    const approval = requestApproval(
+    const approval = await requestApproval(
       'sigma-voice',
       'voice_task_draft',
       `Voice task draft from ${submittedBy}`,
@@ -529,7 +538,7 @@ app.post<{
     if (!prompt) return reply.code(400).send({ error: 'prompt is required' });
 
     const submittedBy = req.body.submittedBy ?? getUserId(req as Parameters<typeof getUserId>[0]);
-    const approval = requestApproval(
+    const approval = await requestApproval(
       'sigma-hermes',
       'hermes_chat',
       `Hermes chat: ${prompt.slice(0, 96)}`,
@@ -558,7 +567,7 @@ app.post<{ Body: { approvalId: string } }>(
     },
   },
   async (req, reply) => {
-    const approval = getApproval(req.body.approvalId);
+    const approval = await getApproval(req.body.approvalId);
     if (!approval) return reply.code(404).send({ error: 'approval not found' });
     if (approval.agent !== 'sigma-hermes' || approval.action !== 'hermes_chat') {
       return reply.code(400).send({ error: 'approval is not a Hermes chat approval' });
@@ -742,7 +751,7 @@ app.post<{ Body: {
       if (plan.blocked) {
         return reply.code(422).send({ plan, queued: false, blockReasons: plan.blockReasons, strategyContext: strategyContext ?? null });
       }
-      const approval = requestApproval(
+      const approval = await requestApproval(
         'sigma-risk', 'trade_plan',
         `Risk plan: ${plan.side.toUpperCase()} ${plan.contracts}x ${plan.symbol} @ ${plan.entry}`,
         { plan, taskId: randomUUID(), submittedBy, strategyId: strategyId ?? null },

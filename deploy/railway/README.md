@@ -8,9 +8,9 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 
 | Railway service | Dockerfile path | Notes |
 |---|---|---|
-| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Uses `/data/sigma.db` on the Railway volume. |
+| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Uses `/data/sigma.db` by default; approvals, memory, and outcome logs can use Railway Postgres with `SIGMA_CONTROL_STORE=postgres`. |
 | `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
-| `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Not yet used by Sigma code. |
+| `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Seeded from live `/data/sigma.db`; available for the Sigma control store. |
 | `Redis` | Railway managed database | Online. Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, volume `redis-volume`. Not yet used by Sigma code. |
 
 ## Railway Setup
@@ -61,7 +61,20 @@ The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sa
 
 Keep `sigma-api` at one replica while SQLite is the production store. Move to PostgreSQL before multi-replica traffic.
 
-Railway managed `Postgres` and `Redis` are provisioned and online. Do not point `sigma-api` at `DATABASE_URL` or `REDIS_URL` until the repository has PostgreSQL migration code and Redis queue/cache integration.
+Railway managed `Postgres` and `Redis` are provisioned and online. `Redis` is not wired yet. `Postgres` can now back the Sigma control store:
+
+```text
+SIGMA_CONTROL_STORE=postgres
+DATABASE_URL=<Railway Postgres private/internal URL>
+```
+
+The control store currently covers:
+
+- approvals
+- outcome log
+- memory entries
+
+Workspace, auth, strategy, journal, paper-order, and sandbox-write tables still use the existing SQLite modules until their repositories are converted.
 
 ## SQLite To Postgres Migration
 
@@ -83,7 +96,7 @@ npm run db:migrate:postgres
 
 The script creates the Postgres schema, upserts rows from all current Sigma tables, and verifies row counts. Use `--truncate` only when intentionally replacing all destination table rows.
 
-This migration command prepares the data layer. It does not switch `sigma-api` to Postgres yet; the runtime still reads SQLite through `DB_PATH`.
+This migration command prepares the data layer. It does not switch `sigma-api` by itself. After migration verification, set `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` in Railway to move approvals, memory, and outcome logs to Postgres.
 
 Production migration status on 2026-06-06: the command was run from the Railway `sigma-api` console against `/data/sigma.db` and managed Railway `Postgres`. Verification passed with all tables `ok`; live rows copied were `approvals=1` and `outcome_log=1`.
 
