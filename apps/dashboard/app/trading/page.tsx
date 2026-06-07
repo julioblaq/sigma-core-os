@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const API = '/api/v1';
 
@@ -44,6 +44,14 @@ interface Approval {
   };
 }
 
+interface TranscriptionResult {
+  text: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  error?: string;
+}
+
 function headers(): Record<string, string> {
   const h: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = typeof window !== 'undefined' ? localStorage.getItem('sigma_token') : null;
@@ -53,6 +61,18 @@ function headers(): Record<string, string> {
 
 function fieldNumber(value: string): number {
   return Number.parseFloat(value);
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = String(reader.result ?? '');
+      resolve(result.includes(',') ? result.split(',')[1] : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('audio read failed'));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function fmtTime(iso: string): string {
@@ -140,6 +160,8 @@ function TradeRow({ approval }: { approval: Approval }) {
 }
 
 export default function TradingOpsPage() {
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
   const [symbol, setSymbol] = useState('MNQ');
   const [side, setSide] = useState<Side>('long');
   const [entry, setEntry] = useState('19000');
@@ -153,6 +175,11 @@ export default function TradingOpsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ approvalId?: string; plan?: TradePlan; error?: string; status?: number } | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState('Draft a simulated MNQ long at 19000 with a 10 point stop, risk 100 dollars, 2R.');
+  const [voiceStatus, setVoiceStatus] = useState('');
+  const [voiceBusy, setVoiceBusy] = useState(false);
 
   const tradePending = useMemo(
     () => pending.filter(a => a.action === 'trade_plan' && a.agent === 'sigma-risk'),
@@ -216,6 +243,93 @@ export default function TradingOpsPage() {
       setResult({ error: err instanceof Error ? err.message : String(err) });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function startRecording() {
+    setVoiceStatus('');
+    chunksRef.current = [];
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream);
+    recorderRef.current = recorder;
+    recorder.ondataavailable = event => {
+      if (event.data.size > 0) chunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+      setAudioBlob(blob);
+      stream.getTracks().forEach(track => track.stop());
+    };
+    recorder.start();
+    setRecording(true);
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+    setRecording(false);
+  }
+
+  async function transcribeVoiceTrade() {
+    if (!audioBlob) {
+      setVoiceStatus('record audio first');
+      return;
+    }
+    setVoiceBusy(true);
+    setVoiceStatus('transcribing');
+    try {
+      const audioBase64 = await blobToBase64(audioBlob);
+      const response = await fetch('/api/v1/voice/transcribe', {
+        method: 'POST',
+        headers: headers(),
+        credentials: 'include',
+        body: JSON.stringify({ audioBase64, mimeType: audioBlob.type || 'audio/webm' }),
+      });
+      const data = await response.json() as TranscriptionResult;
+      if (!response.ok) throw new Error(data.error ?? 'transcription failed');
+      setVoiceTranscript(data.text);
+      setVoiceStatus(`${data.provider} / ${data.model} / ${data.latencyMs}ms`);
+    } catch (err) {
+      setVoiceStatus(err instanceof Error ? err.message : 'transcription failed');
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
+  async function draftVoiceTrade() {
+    const transcript = voiceTranscript.trim();
+    if (!transcript) {
+      setVoiceStatus('transcript required');
+      return;
+    }
+    setVoiceBusy(true);
+    setResult(null);
+    setVoiceStatus('drafting trade plan');
+    try {
+      const response = await fetch('/api/v1/voice/draft-simulated-trade', {
+        method: 'POST',
+        headers: headers(),
+        credentials: 'include',
+        body: JSON.stringify({
+          transcript,
+          accountSize: fieldNumber(accountSize),
+          riskDollars: fieldNumber(riskDollars),
+          rrRatio: fieldNumber(rrRatio),
+        }),
+      });
+      const data = await response.json();
+      setResult({
+        approvalId: data.approvalId,
+        plan: data.plan,
+        error: response.ok ? undefined : data.error ?? data.blockReasons?.join(', ') ?? 'Voice draft rejected',
+        status: response.status,
+      });
+      setVoiceStatus(response.ok ? `queued ${data.approvalId}` : data.code ?? 'rejected');
+      await load();
+    } catch (err) {
+      setVoiceStatus(err instanceof Error ? err.message : 'voice draft failed');
+    } finally {
+      setVoiceBusy(false);
     }
   }
 
@@ -299,6 +413,45 @@ export default function TradingOpsPage() {
               )}
             </div>
           )}
+
+          <div className="mt-5 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Nova Voice Draft</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Speak or paste a simulated trade idea.</p>
+              </div>
+              <Badge value="nova_voice" tone="blue" />
+            </div>
+
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                onClick={recording ? stopRecording : startRecording}
+                disabled={voiceBusy}
+                className="btn-ghost"
+                style={{ color: recording ? 'var(--red)' : 'var(--text)' }}>
+                {recording ? 'Stop' : 'Record'}
+              </button>
+              <button onClick={transcribeVoiceTrade} disabled={voiceBusy || recording || !audioBlob} className="btn-ghost">
+                Transcribe
+              </button>
+              <button onClick={draftVoiceTrade} disabled={voiceBusy || recording} className="btn-primary">
+                Draft From Voice
+              </button>
+            </div>
+
+            <textarea
+              value={voiceTranscript}
+              onChange={event => setVoiceTranscript(event.target.value)}
+              rows={4}
+              className="sigma-input"
+              style={{ resize: 'vertical', fontFamily: 'var(--font-mono)' }}
+            />
+            {voiceStatus && (
+              <div className="mono text-xs mt-2" style={{ color: voiceStatus.includes('failed') || voiceStatus.includes('required') || voiceStatus.includes('rejected') ? 'var(--red)' : 'var(--muted)' }}>
+                {voiceStatus}
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="space-y-4">
@@ -357,4 +510,3 @@ export default function TradingOpsPage() {
     </div>
   );
 }
-

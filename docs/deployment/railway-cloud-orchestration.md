@@ -89,6 +89,7 @@ Live services:
 | `agent-worker` | Redis worker Dockerfile ready | Deploy with `RAILWAY_DOCKERFILE_PATH=deploy/railway/agent-worker.Dockerfile` |
 | TradingView webhook middleware | Implemented in `sigma-api` | Approval-only receiver at `/v1/webhooks/tradingview`; no broker execution. |
 | Simulated trading ops | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` sends approval-only simulated alerts through `/v1/trading/simulated-alert`. |
+| Nova voice trading draft | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` records/transcribes speech, then `/v1/voice/draft-simulated-trade` parses it into an approval-only simulated trade plan. |
 | `trading-middleware-cloud` | Service shell only | Keep offline until a separate service is needed. |
 
 Create separate Railway services from the same GitHub repository for Sigma:
@@ -265,6 +266,8 @@ Telegram, trading, broker, and OpenD variables remain local until a deliberate c
 TradingView webhook variables are cloud-safe because they only allow alert intake into Sigma's approval queue. They do not enable broker execution, Ghost execution, Tradovate execution, or OpenD access.
 
 While no prop-firm account or sufficiently funded live account is connected, use the dashboard simulated alert flow as the primary trading middleware test harness. It preserves the same risk-plan approval behavior without depending on market alerts, broker sessions, or external account state.
+
+Nova voice trading drafts use the same test harness. Voice transcripts create pending `sigma-risk` `trade_plan` approvals with `source=nova_voice` and `executionMode=approval_only`; they do not execute trades.
 
 ## Validation
 
