@@ -1,0 +1,60 @@
+name: Cloud Watch
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      write_smoke:
+        description: 'Run write smoke checks that create journal entries and clean up a test approval'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  cloud-watch:
+    name: Railway cloud watch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run cloud watch
+        env:
+          CLOUD_WATCH_API_URL: https://sigma-api-production-b005.up.railway.app
+          CLOUD_WATCH_DASHBOARD_URL: https://sigma-dashboard-production-a7a7.up.railway.app
+          CLOUD_WATCH_HERMES_URL: https://hermes-agent-production-62ee.up.railway.app
+          CLOUD_WATCH_WRITE_SMOKE: ${{ github.event_name == 'workflow_dispatch' && inputs.write_smoke == 'true' && 'true' || 'false' }}
+          CLOUD_WATCH_REPORT_PATH: cloud-watch-report.json
+        run: node scripts/cloud-watch.mjs
+
+      - name: Summarize
+        if: always()
+        run: |
+          if [ -f cloud-watch-report.json ]; then
+            {
+              echo "## Cloud Watch"
+              echo
+              node -e "const r=require('./cloud-watch-report.json'); console.log('- Status: ' + (r.ok ? 'PASS' : 'FAIL')); console.log('- Started: ' + r.startedAt); console.log('- Ended: ' + r.endedAt); console.log('- Write smoke: ' + r.includeWriteSmoke); console.log(''); console.log('| Check | Result | Duration |'); console.log('|---|---:|---:|'); for (const c of r.checks) console.log('| ' + c.name + ' | ' + (c.ok ? 'PASS' : 'FAIL') + ' | ' + c.durationMs + 'ms |');"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-watch-report
+          path: cloud-watch-report.json
+          if-no-files-found: ignore
