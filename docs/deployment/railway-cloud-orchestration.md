@@ -87,7 +87,8 @@ Live services:
 | `sigma-dashboard` | Deployed | `https://sigma-dashboard-production-a7a7.up.railway.app` |
 | `hermes-agent` | Deployed | `https://hermes-agent-production-62ee.up.railway.app` |
 | `agent-worker` | Redis worker Dockerfile ready | Deploy with `RAILWAY_DOCKERFILE_PATH=deploy/railway/agent-worker.Dockerfile` |
-| `trading-middleware-cloud` | Service shell only | Not deployed |
+| TradingView webhook middleware | Implemented in `sigma-api` | Approval-only receiver at `/v1/webhooks/tradingview`; no broker execution. |
+| `trading-middleware-cloud` | Service shell only | Keep offline until a separate service is needed. |
 
 Create separate Railway services from the same GitHub repository for Sigma:
 
@@ -200,6 +201,10 @@ HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
 HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
 HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
+TRADINGVIEW_WEBHOOK_SECRET=<set in Railway>
+TRADINGVIEW_DEFAULT_ACCOUNT_SIZE=5000
+TRADINGVIEW_DEFAULT_RISK_DOLLARS=100
+TRADINGVIEW_DEFAULT_RR=2
 ```
 
 Use `SIGMA_CONTROL_STORE=postgres` only after `DATABASE_URL` points at the managed Railway Postgres service.
@@ -255,6 +260,8 @@ Verified cloud variables include:
 Use only the variables needed by the cloud default profile.
 
 Telegram, trading, broker, and OpenD variables remain local until a deliberate cutover.
+
+TradingView webhook variables are cloud-safe because they only allow alert intake into Sigma's approval queue. They do not enable broker execution, Ghost execution, Tradovate execution, or OpenD access.
 
 ## Validation
 

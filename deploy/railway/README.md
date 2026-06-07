@@ -66,6 +66,10 @@ HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
 HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
 HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
+TRADINGVIEW_WEBHOOK_SECRET=<set in Railway>
+TRADINGVIEW_DEFAULT_ACCOUNT_SIZE=5000
+TRADINGVIEW_DEFAULT_RISK_DOLLARS=100
+TRADINGVIEW_DEFAULT_RR=2
 ```
 
 `DB_PATH` is intentionally omitted from the Railway production variables. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares `SIGMA_SANDBOX_PATH`, and then uses `gosu` to drop execution to the `node` user before launching the API.
@@ -177,6 +181,46 @@ Dashboard surface:
 `POST /v1/hermes/draft-chat` creates a `sigma-hermes` approval with action `hermes_chat`. `POST /v1/hermes/dispatch-chat` sends the prompt to Hermes only after that approval has status `approved`.
 
 This is intentionally limited to non-streaming `/v1/chat/completions`. Do not expose the broader Hermes run/tool execution surface until tool permissions, audit logging, idempotency, and rollback handling are reviewed.
+
+## TradingView Webhook Approval Flow
+
+`sigma-api` can receive TradingView alerts and turn them into `sigma-risk` `trade_plan` approvals:
+
+```text
+POST /v1/webhooks/tradingview
+```
+
+This endpoint is approval-only. It generates a deterministic risk plan, queues it for human approval, and never submits an order to a broker.
+
+Required Railway variable:
+
+```text
+TRADINGVIEW_WEBHOOK_SECRET=<set in Railway>
+```
+
+Optional safe defaults:
+
+```text
+TRADINGVIEW_DEFAULT_ACCOUNT_SIZE=5000
+TRADINGVIEW_DEFAULT_RISK_DOLLARS=100
+TRADINGVIEW_DEFAULT_RR=2
+```
+
+TradingView should pass the secret as a `secret` field in the JSON body. Non-TradingView clients can also use an `Authorization: Bearer <secret>` header or `x-sigma-webhook-secret`.
+
+Example alert body:
+
+```json
+{
+  "secret": "<TradingView webhook secret>",
+  "ticker": "MNQ",
+  "action": "buy",
+  "price": 19000,
+  "stop_points": 10
+}
+```
+
+If defaults are not configured, alerts must also include `accountSize`, `riskDollars`, and `rrRatio`.
 
 ## First Cloud Cutover Rule
 
