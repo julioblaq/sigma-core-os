@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { memSet } from '../store/control.js';
+import { novaStatus, type NovaStatusModel, type NovaIntentType } from './contract.js';
 
 export interface NovaQueryInput {
   sessionId?: string;
@@ -27,6 +28,7 @@ export interface NovaQueryResult {
   voiceText: string;
   highlights: NovaHighlight[];
   intent: null;
+  statusModel: NovaStatusModel;
 }
 
 export interface NovaJournalInput {
@@ -143,17 +145,34 @@ function traderAnswer(input: NovaQueryInput): string {
   return `${prefix}Read-only. I can explain the screen, risk, or journal the setup. No executable action was produced.`;
 }
 
+function intentType(input: NovaQueryInput): NovaIntentType {
+  const transcript = clean(input.transcript)?.toLowerCase() ?? '';
+  if (/\b(journal|capture|save|tag)\b/.test(transcript)) return 'journal_capture';
+  if (/\b(stop|sl|risk|ticket|order)\b/.test(transcript)) return 'risk_review';
+  if (/\b(dom|ladder|bid|bids|ask|asks|stacked|liquidity|chart|setup|looking|screen|price|level)\b/.test(transcript)) return 'explain';
+  return 'none';
+}
+
 export function answerNovaQuery(input: NovaQueryInput): NovaQueryResult {
   const transcript = clean(input.transcript);
   if (!transcript) throw new Error('transcript is required');
 
   const answer = traderAnswer(input);
+  const intent = intentType(input);
 
   return {
     answer,
     voiceText: answer,
     highlights: safeHighlights(input),
     intent: null,
+    statusModel: novaStatus({
+      mode: intent === 'journal_capture' ? 'journal' : intent === 'risk_review' ? 'risk_coach' : 'tutor',
+      intentType: intent,
+      riskState: 'read_only',
+      executionState: 'read_only',
+      confidence: 'medium',
+      reason: 'Screen-aware explanation only. Nova did not create or send an executable action.',
+    }),
   };
 }
 

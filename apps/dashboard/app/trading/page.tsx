@@ -63,10 +63,27 @@ interface NovaHighlight {
   blocksInteraction?: false;
 }
 
+interface NovaStatusModel {
+  mode: 'tutor' | 'draft' | 'risk_coach' | 'journal';
+  intentType: string;
+  riskState: 'read_only' | 'approval_only' | 'warning' | 'blocked';
+  executionState: 'read_only' | 'approval_required' | 'blocked';
+  confidence: 'low' | 'medium' | 'high';
+  reason: string;
+  expiresAt: string;
+  highlightSafety: {
+    avoidCriticalControls: true;
+    blocksInteraction: false;
+    maxHighlights: number;
+    fadeMs: number;
+  };
+}
+
 interface NovaCoach {
   voiceText: string;
   answer?: string;
   highlights: NovaHighlight[];
+  statusModel?: NovaStatusModel;
 }
 
 function headers(): Record<string, string> {
@@ -128,6 +145,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function NovaCoachPanel({ coach, visible }: { coach: NovaCoach; visible: boolean }) {
+  const mode = coach.statusModel?.mode ?? 'draft';
+  const riskState = coach.statusModel?.riskState ?? 'approval_only';
+  const modeTone = riskState === 'blocked' ? 'red' : riskState === 'warning' ? 'amber' : riskState === 'read_only' ? 'blue' : 'green';
+
   return (
     <div
       className="mt-3 rounded-md border p-3 transition-opacity duration-700"
@@ -139,9 +160,19 @@ function NovaCoachPanel({ coach, visible }: { coach: NovaCoach; visible: boolean
       }}
       aria-live="polite"
     >
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <Badge value={mode} tone={modeTone} />
+        <Badge value={coach.statusModel?.executionState ?? 'approval_required'} tone="neutral" />
+        <Badge value={`confidence:${coach.statusModel?.confidence ?? 'medium'}`} tone="neutral" />
+      </div>
       <div className="text-xs font-medium" style={{ color: 'var(--text)' }}>
         {coach.voiceText}
       </div>
+      {coach.statusModel?.reason && (
+        <div className="mt-2 text-xs" style={{ color: 'var(--subtext)' }}>
+          {coach.statusModel.reason}
+        </div>
+      )}
       {coach.highlights.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {coach.highlights.map((highlight, index) => (
@@ -235,6 +266,8 @@ export default function TradingOpsPage() {
   const [voiceBusy, setVoiceBusy] = useState(false);
   const [voiceCoach, setVoiceCoach] = useState<NovaCoach | null>(null);
   const [voiceCoachVisible, setVoiceCoachVisible] = useState(false);
+  const currentNovaMode = voiceCoach?.statusModel?.mode ?? 'draft';
+  const currentNovaState = voiceCoach?.statusModel?.riskState ?? 'approval_only';
 
   const tradePending = useMemo(
     () => pending.filter(a => a.action === 'trade_plan' && a.agent === 'sigma-risk'),
@@ -398,6 +431,7 @@ export default function TradingOpsPage() {
           voiceText: data.voiceText,
           answer: data.answer,
           highlights: Array.isArray(data.highlights) ? data.highlights : [],
+          statusModel: data.statusModel,
         });
       }
       setVoiceStatus(response.ok ? `approval queued ${data.approvalId}` : data.code ?? 'rejected');
@@ -496,7 +530,10 @@ export default function TradingOpsPage() {
                 <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Nova Voice Draft</h2>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Speak or paste a simulated trade idea.</p>
               </div>
-              <Badge value="nova_voice" tone="blue" />
+              <div className="flex flex-wrap justify-end gap-2">
+                <Badge value={currentNovaMode} tone="blue" />
+                <Badge value={currentNovaState} tone={currentNovaState === 'blocked' ? 'red' : currentNovaState === 'warning' ? 'amber' : 'green'} />
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-2 mb-3">
@@ -543,7 +580,10 @@ export default function TradingOpsPage() {
             </div>
             <div className="sigma-panel p-3">
               <div className="text-xs uppercase tracking-wider" style={{ color: 'var(--subtext)' }}>Mode</div>
-              <div className="mono text-sm mt-2" style={{ color: 'var(--green)' }}>approval_only</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge value={currentNovaMode} tone="blue" />
+                <Badge value={currentNovaState} tone={currentNovaState === 'blocked' ? 'red' : currentNovaState === 'warning' ? 'amber' : 'green'} />
+              </div>
             </div>
           </div>
 

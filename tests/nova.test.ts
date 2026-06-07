@@ -16,6 +16,10 @@ describe('Nova safe operator endpoints', () => {
     });
 
     assert.equal(result.intent, null);
+    assert.equal(result.statusModel.mode, 'tutor');
+    assert.equal(result.statusModel.intentType, 'explain');
+    assert.equal(result.statusModel.riskState, 'read_only');
+    assert.equal(result.statusModel.highlightSafety.blocksInteraction, false);
     assert.match(result.answer, /Read-only/);
     assert.match(result.answer, /trend, key level, then risk/);
     assert.equal(result.voiceText, result.answer);
@@ -32,6 +36,8 @@ describe('Nova safe operator endpoints', () => {
     });
 
     assert.equal(result.intent, null);
+    assert.equal(result.statusModel.mode, 'risk_coach');
+    assert.equal(result.statusModel.intentType, 'risk_review');
     assert.match(result.voiceText, /Check the stop field/);
     assert.match(result.voiceText, /No broker order sent/);
     assert.deepEqual(result.highlights.map(item => item.label), ['Risk', 'Chart']);

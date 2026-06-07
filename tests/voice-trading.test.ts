@@ -60,6 +60,10 @@ describe('Nova voice trading draft parser', () => {
     }, ['account size defaulted to 5000'], true);
 
     assert.match(copy.answer, /MNQ LONG: 5x @ 19000/);
+    assert.equal(copy.statusModel.mode, 'draft');
+    assert.equal(copy.statusModel.intentType, 'draft_trade');
+    assert.equal(copy.statusModel.riskState, 'approval_only');
+    assert.match(copy.statusModel.reason, /Waiting for approval/);
     assert.match(copy.voiceText, /Draft queued for approval/);
     assert.match(copy.voiceText, /No broker order sent/);
     assert.deepEqual(copy.highlights.map(item => item.label), ['Draft', 'Risk']);
