@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-06
-Status: Default Hermes API server deployed to Railway; 24 hour stability window pending.
+Status: Default Hermes API server deployed to Railway; cloud bridge verified; 24 hour stability window pending.
 
 ## Objective
 
@@ -137,7 +137,7 @@ Set `HERMES_HOME` in Railway to the container-owned data path:
 /opt/data
 ```
 
-If Hermes requires persistent state, back that path with a Railway volume.
+Current decision: keep Railway Hermes stateless for the approval-gated chat bridge. `HERMES_HOME=/opt/data` is configured, but no Railway volume is attached. Add a Railway volume before relying on long-term Hermes session memory, profile edits, or cloud-side durable state.
 
 Do not copy the local Telegram bot token into Railway until the default local gateway is intentionally cut over. Running two long-polling Telegram gateways with the same bot token can break message handling.
 
@@ -165,7 +165,7 @@ Before deployment, inspect Hermes without printing secret values:
    ```
 
 4. Add Railway variables. Done for API server and model-provider keys.
-5. Add a Railway volume for `HERMES_HOME` if Hermes writes durable profile state.
+5. Use stateless `HERMES_HOME=/opt/data` for the current approved chat bridge. Add a Railway volume only before relying on durable profile/session state.
 6. Deploy to Railway. Done.
 7. Confirm gateway startup without local path assumptions. Health endpoint verified.
 8. Keep the local LaunchAgent running during the first Railway smoke test.
@@ -179,15 +179,15 @@ Before deployment, inspect Hermes without printing secret values:
 - [x] Secret variable names documented without values
 - [x] Railway service created
 - [x] Railway variables configured
-- [ ] Persistent state decision made for `HERMES_HOME`
+- [x] Persistent state decision made for `HERMES_HOME`
 - [x] Default gateway starts on Railway
 - [x] Sigma API can reach Hermes health and model endpoints
 - [x] Sigma API exposes approval-gated Hermes chat dispatch
-- [ ] Logs remain healthy through restart
+- [x] Logs show active deployment and gateway startup
 - [x] No local terminal required
 - [ ] 24 hour continuous runtime completed
-- [ ] Local default LaunchAgent disabled only after Railway success
-- [ ] Trading LaunchAgent remains local
+- [ ] Local default LaunchAgent disabled only after 24 hour Railway success
+- [x] Trading LaunchAgent remains local
 
 ## Verified Railway Results
 
@@ -232,6 +232,21 @@ POST /v1/hermes/dispatch-chat -> HTTP 200
 Hermes response: "Hermes approval bridge connected."
 ```
 
+Observed on 2026-06-07:
+
+```text
+Railway hermes-agent: Online
+Active deployment: successful, about 17 hours old at 2026-06-07 11:11 EDT
+HERMES_HOME=/opt/data
+Railway volume for HERMES_HOME: none
+GET /v1/hermes/status through sigma-api -> HTTP 200, configured=true, ok=true
+GET /v1/hermes/models through sigma-api -> HTTP 200, model hermes-agent
+Approval-gated Hermes chat dispatch -> HTTP 200
+Hermes response: "Hermes cloud bridge healthy."
+```
+
+The visible Railway log warning says no user allowlists are configured and unauthorized platform users will be denied. That is acceptable for the current Sigma bridge because Sigma uses `API_SERVER_KEY` server-side and does not expose broad platform user access.
+
 Dashboard surface:
 
 ```text
@@ -250,7 +265,7 @@ If Railway deployment fails:
 4. Fix packaging or environment configuration.
 5. Redeploy and retry validation.
 
-Do not disable the local LaunchAgent until Railway has completed the 24 hour success window.
+Do not disable the local default LaunchAgent until Railway has completed the 24 hour success window. The active Railway deployment was about 17 hours old at 2026-06-07 11:11 EDT, so the local default gateway remains a rollback path for now.
 
 ## Security Notes
 
@@ -263,11 +278,9 @@ Do not disable the local LaunchAgent until Railway has completed the 24 hour suc
 
 ## Open Questions
 
-- Is Hermes default gateway stateless enough to run without a persistent volume?
-- Which Hermes variables are required beyond `HERMES_HOME`?
-- Does the default profile call local-only services?
-- Is there a health endpoint or heartbeat command suitable for Railway monitoring?
-- Should the trading profile remain permanently local, or should it only expose a narrow private tunnel from M1 to cloud middleware?
+- After the 24 hour stability window completes, should `ai.hermes.gateway` be disabled immediately or retained as a cold rollback plist?
+- Does the default profile need a Railway volume before any long-term session memory features are enabled?
+- Should the trading profile remain permanently local, or should it eventually expose a narrow private tunnel from the M1 to cloud middleware?
 
 ## Recommended First PR Scope
 

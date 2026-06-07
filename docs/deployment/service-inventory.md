@@ -59,7 +59,7 @@ Environment: production
 
 | Service | Classification | Current launch mechanism | Evidence | Migration notes |
 |---|---:|---|---|---|
-| Hermes default gateway | Unknown | macOS LaunchAgent `ai.hermes.gateway` | `/Users/jerryhicksjr/Library/LaunchAgents/ai.hermes.gateway.plist` | Runs `/Users/jerryhicksjr/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main gateway run --replace` with `HERMES_HOME=/Users/jerryhicksjr/.hermes`. Hermes package, Dockerfile, and gateway command were audited on 2026-06-06. Railway service shell `hermes-agent` exists, but deployment is pending explicit Railway start-command configuration and secret/profile review. |
+| Hermes default gateway | Cloud migrated with local rollback | macOS LaunchAgent `ai.hermes.gateway` plus Railway `hermes-agent` | `/Users/jerryhicksjr/Library/LaunchAgents/ai.hermes.gateway.plist`, Railway service `hermes-agent` | Railway `hermes-agent` is online with start command `hermes gateway run --replace`, API server enabled, and Sigma approval-gated chat verified. Keep the local default LaunchAgent running only until the 24 hour Railway stability window completes. |
 | Hermes trading gateway | Local Only until proven otherwise | macOS LaunchAgent `ai.hermes.gateway-trading` | `/Users/jerryhicksjr/Library/LaunchAgents/ai.hermes.gateway-trading.plist` | Runs Hermes with `--profile trading` and `HERMES_HOME=/Users/jerryhicksjr/.hermes/profiles/trading`. Keep local until it is confirmed that it does not require broker desktop software, MFA sessions, OpenD, or LAN-only trading access. |
 | Disabled legacy Hermes LaunchAgent | Local Only / inactive | Disabled plist file | `/Users/jerryhicksjr/Library/LaunchAgents/xyz.mindlyft.hermes.plist.disabled-20260604062832` | Inactive historical service. Do not migrate unless re-enabled intentionally. |
 
@@ -165,15 +165,16 @@ The repository now has Dockerfile-based Railway deployment assets for the Sigma 
 - Redis cache integration beyond task queue support
 - CI/CD deployment workflow
 
-Railway service shell parked:
+Railway service shell cleanup:
 
-- `trading-middleware-cloud`: empty service shell with no source repo, no active deployment, no domain, and only a demo variable. Middleware behavior currently lives in `sigma-api`.
+- `trading-middleware-cloud` was deleted from Railway production on 2026-06-07 after confirming it had no source repo, no active deployment, no domain, and only a demo variable. Middleware behavior currently lives in `sigma-api`.
 
 Hermes audit findings:
 
 - Hermes has a production Dockerfile with s6-overlay supervision and `HERMES_HOME=/opt/data`.
 - The Dockerfile's default empty `CMD` routes to the base `hermes` command, not directly to `gateway run --replace`.
-- For Railway, configure the service start command to `gateway run --replace` before deploying `hermes-agent`.
+- Railway `hermes-agent` start command is configured as `hermes gateway run --replace`.
+- `HERMES_HOME=/opt/data` has no Railway volume attached; this is acceptable for the current stateless approved chat bridge, but not for long-term Hermes session memory.
 - Keep `ai.hermes.gateway-trading` local because it explicitly runs `--profile trading` with `HERMES_HOME=/Users/jerryhicksjr/.hermes/profiles/trading`.
 
 ## Current Verification Status
