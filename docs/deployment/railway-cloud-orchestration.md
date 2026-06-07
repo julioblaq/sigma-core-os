@@ -96,26 +96,28 @@ Create separate Railway services from the same GitHub repository for Sigma:
 | `sigma-api` | Sigma Core OS repo root | `RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-api.Dockerfile` |
 | `sigma-dashboard` | Sigma Core OS repo root | `RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-dashboard.Dockerfile` |
 
-A Railway volume is attached to `sigma-api` at:
+The original single-replica bridge attached a Railway volume to `sigma-api` at:
 
 ```text
 /data
 ```
 
-The persistent `sigma-api` deployment uses:
+The current Postgres production deployment no longer needs this volume or `DB_PATH`. Keep the old volume only as a temporary rollback artifact while the Postgres deployment soaks.
+
+The old persistent SQLite deployment used:
 
 ```text
 DB_PATH=/data/sigma.db
 SIGMA_SANDBOX_PATH=/data/sandbox
 ```
 
-The API image uses `deploy/railway/sigma-api-entrypoint.sh` to prepare the mounted volume path, then uses `gosu` to start the API as the `node` user. This keeps the first cloud move small. Keep `sigma-api` single-replica while SQLite is active. PostgreSQL should replace SQLite before multi-replica production traffic.
+The API image now defaults to `SIGMA_CONTROL_STORE=postgres` and `SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox`. The entrypoint prepares the sandbox path, and only prepares a SQLite database directory when `DB_PATH` is explicitly set for a fallback deployment.
 
-Managed Railway databases are provisioned for the next migration step:
+Managed Railway databases are provisioned:
 
 | Service | Status | Notes |
 |---|---:|---|
-| `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Seeded from live `/data/sigma.db` and ready for the Sigma control store. |
+| `Postgres` | Online | Service ID `f80547fb-42aa-42c7-afa7-018044531379`, backed by `postgres-volume`. Seeded from live `/data/sigma.db` and backing the Sigma runtime store. |
 | `Redis` | Online | Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, backed by `redis-volume`. Not yet used by Sigma code. |
 
 The first migration layer is available as:
@@ -130,7 +132,7 @@ Safe sequence:
 2. Set `POSTGRES_MIGRATION_URL`, `DATABASE_PUBLIC_URL`, or `DATABASE_URL` outside git.
 3. Run `npm run db:migrate:postgres` to create schema, copy rows, and verify counts.
 4. Run `npm run db:migrate:postgres -- --verify-only` after any later copy.
-5. Set `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` when ready to move approvals, memory, and outcome logs to Postgres.
+5. Keep `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` active in Railway production.
 
 Production copy completed on 2026-06-06 from inside the Railway `sigma-api` console:
 
@@ -166,7 +168,7 @@ This switch moves these API and agent surfaces to Railway Postgres:
 - Sigma Bot and Sigma Dev memory writes
 - outcome log reads/searches/writes
 
-SQLite fallback imports are now lazy-loaded behind the local/default store mode. With `SIGMA_CONTROL_STORE=postgres`, the cloud store facades load without opening the SQLite database. Keep `DB_PATH=/data/sigma.db` only as a local/single-replica rollback bridge until one more production soak pass is complete.
+SQLite fallback imports are now lazy-loaded behind the local/default store mode. With `SIGMA_CONTROL_STORE=postgres`, the cloud store facades load without opening the SQLite database. `DB_PATH` is no longer a production Railway requirement.
 
 
 ## Variables
@@ -175,8 +177,9 @@ SQLite fallback imports are now lazy-loaded behind the local/default store mode.
 
 ```text
 PORT=3001
-DB_PATH=/data/sigma.db
-SIGMA_SANDBOX_PATH=/data/sandbox
+SIGMA_CONTROL_STORE=postgres
+DATABASE_URL=<Railway Postgres private/internal URL>
+SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox
 DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
@@ -193,8 +196,6 @@ HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
 HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
 HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
-SIGMA_CONTROL_STORE=postgres
-DATABASE_URL=<Railway Postgres private/internal URL>
 ```
 
 Use `SIGMA_CONTROL_STORE=postgres` only after `DATABASE_URL` points at the managed Railway Postgres service.
@@ -360,8 +361,8 @@ Today is successful when:
 
 ## Open Cloud Follow-Ups
 
-- Monitor `/data/sigma.db` persistence across redeploys.
-- Convert the remaining SQLite-backed modules to Postgres after the control-store switch is stable.
+- Monitor Postgres-backed approval, memory, identity, trading, and execution store activity after redeploys.
+- Remove the old `/data/sigma.db` volume after the Postgres deployment completes its rollback window.
 - Add Redis queue/cache integration against managed Railway `Redis`.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.
