@@ -144,6 +144,7 @@ describe('task queue', () => {
     listRedis.nextResponses = [
       [task.id],
       JSON.stringify(runningDoc),
+      null,
     ];
 
     const tasks = await listTaskStatuses(50, listRedis);
@@ -151,6 +152,42 @@ describe('task queue', () => {
     assert.equal(tasks[0].id, task.id);
     assert.equal(tasks[0].status, 'running');
     assert.deepEqual(listRedis.commands[0], ['LRANGE', 'sigma:test-tasks:status-index', 0, 49]);
+  });
+
+  it('hydrates queued status from a legacy worker result during mixed deploys', async () => {
+    const redis = new FakeRedis();
+    const task = makeTask('unknown_task');
+    redis.nextResponses = [
+      JSON.stringify({
+        id: task.id,
+        taskId: task.id,
+        type: 'unknown_task',
+        agent: 'agent-worker',
+        queue: 'sigma:tasks',
+        status: 'queued',
+        submitted_by: 'test',
+        result_summary: 'queued for agent-worker',
+        created_at: task.createdAt,
+        updated_at: task.createdAt,
+      }),
+      JSON.stringify({
+        taskId: task.id,
+        agent: 'none',
+        status: 'error',
+        error: 'No agent registered for task type: unknown_task',
+        failedAt: new Date().toISOString(),
+      }),
+      1,
+    ];
+
+    const result = await getTaskResult(task.id, redis);
+
+    assert.equal(result?.taskId, task.id);
+    assert.equal(result?.status, 'failed');
+    assert.equal('result_summary' in result!, true);
+    assert.deepEqual(redis.commands[0], ['GET', `sigma:task-status:${task.id}`]);
+    assert.deepEqual(redis.commands[1], ['GET', `sigma:task-result:${task.id}`]);
+    assert.deepEqual(redis.commands[2].slice(0, 2), ['SET', `sigma:task-status:${task.id}`]);
   });
 
   it('reads recorded task results by id', async () => {
