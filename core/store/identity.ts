@@ -7,15 +7,15 @@
 import { randomBytes, randomUUID, scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import type { QueryResultRow } from 'pg';
-import * as sqliteAuth from '../auth/index.js';
-import * as sqliteOperators from '../operators/index.js';
-import { AuthError, type User } from '../auth/index.js';
+import { AuthError, type User } from '../auth/types.js';
 import {
   OperatorError,
+  canApprove as roleCanApprove,
+  canManageMembers as roleCanManageMembers,
   type Workspace,
   type WorkspaceMember,
   type WorkspaceRole,
-} from '../operators/index.js';
+} from '../operators/types.js';
 import { query, usingPostgresControlStore, withPostgresClient } from './postgres.js';
 
 const scryptAsync = promisify(scrypt);
@@ -107,7 +107,10 @@ function assertRole(role: WorkspaceRole): void {
 }
 
 export async function register(username: string, email: string, password: string): Promise<User> {
-  if (!usingPostgresControlStore()) return sqliteAuth.register(username, email, password);
+  if (!usingPostgresControlStore()) {
+    const sqliteAuth = await import('../auth/index.js');
+    return sqliteAuth.register(username, email, password);
+  }
 
   if (!username || username.trim().length < 2) {
     throw new AuthError('username must be at least 2 characters', 'INVALID_USERNAME');
@@ -143,7 +146,10 @@ export async function register(username: string, email: string, password: string
 }
 
 export async function login(username: string, password: string): Promise<{ user: User; token: string }> {
-  if (!usingPostgresControlStore()) return sqliteAuth.login(username, password);
+  if (!usingPostgresControlStore()) {
+    const sqliteAuth = await import('../auth/index.js');
+    return sqliteAuth.login(username, password);
+  }
   if (!username || !password) {
     throw new AuthError('username and password are required', 'MISSING_CREDENTIALS');
   }
@@ -180,6 +186,7 @@ export async function login(username: string, password: string): Promise<{ user:
 
 export async function logout(token: string): Promise<void> {
   if (!usingPostgresControlStore()) {
+    const sqliteAuth = await import('../auth/index.js');
     sqliteAuth.logout(token);
     return;
   }
@@ -187,7 +194,10 @@ export async function logout(token: string): Promise<void> {
 }
 
 export async function getSessionUser(token: string | undefined): Promise<User | null> {
-  if (!usingPostgresControlStore()) return sqliteAuth.getSessionUser(token);
+  if (!usingPostgresControlStore()) {
+    const sqliteAuth = await import('../auth/index.js');
+    return sqliteAuth.getSessionUser(token);
+  }
   if (!token) return null;
 
   const result = await query<SessionUserRow>(
@@ -210,14 +220,19 @@ export function extractToken(
   cookies: Record<string, string> | undefined,
   authHeader: string | undefined,
 ): string | undefined {
-  return sqliteAuth.extractToken(cookies, authHeader);
+  if (cookies?.['sigma_session']) return cookies['sigma_session'];
+  if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
+  return undefined;
 }
 
 export async function createWorkspace(
   name: string,
   createdBy: string,
 ): Promise<{ workspace: Workspace; member: WorkspaceMember }> {
-  if (!usingPostgresControlStore()) return sqliteOperators.createWorkspace(name, createdBy);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.createWorkspace(name, createdBy);
+  }
   if (!name || name.trim().length === 0) {
     throw new OperatorError('INVALID_NAME', 'workspace name is required');
   }
@@ -266,13 +281,19 @@ export async function createWorkspace(
 }
 
 export async function getWorkspace(id: string): Promise<Workspace | undefined> {
-  if (!usingPostgresControlStore()) return sqliteOperators.getWorkspace(id);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.getWorkspace(id);
+  }
   const result = await query<WorkspaceRow>('SELECT * FROM workspaces WHERE id = $1', [id]);
   return result.rows[0] ? toWorkspace(result.rows[0]) : undefined;
 }
 
 export async function getWorkspaceBySlug(slug: string): Promise<Workspace | undefined> {
-  if (!usingPostgresControlStore()) return sqliteOperators.getWorkspaceBySlug(slug);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.getWorkspaceBySlug(slug);
+  }
   const result = await query<WorkspaceRow>('SELECT * FROM workspaces WHERE slug = $1', [slug]);
   return result.rows[0] ? toWorkspace(result.rows[0]) : undefined;
 }
@@ -282,7 +303,10 @@ export async function addMember(
   userId: string,
   role: WorkspaceRole,
 ): Promise<WorkspaceMember> {
-  if (!usingPostgresControlStore()) return sqliteOperators.addMember(workspaceId, userId, role);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.addMember(workspaceId, userId, role);
+  }
   const workspace = await getWorkspace(workspaceId);
   if (!workspace) {
     throw new OperatorError('WORKSPACE_NOT_FOUND', `workspace '${workspaceId}' not found`);
@@ -310,7 +334,10 @@ export async function addMember(
 }
 
 export async function getMembers(workspaceId: string): Promise<WorkspaceMember[]> {
-  if (!usingPostgresControlStore()) return sqliteOperators.getMembers(workspaceId);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.getMembers(workspaceId);
+  }
   const workspace = await getWorkspace(workspaceId);
   if (!workspace) {
     throw new OperatorError('WORKSPACE_NOT_FOUND', `workspace '${workspaceId}' not found`);
@@ -327,7 +354,10 @@ export async function getMember(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceMember | undefined> {
-  if (!usingPostgresControlStore()) return sqliteOperators.getMember(workspaceId, userId);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.getMember(workspaceId, userId);
+  }
   const result = await query<WorkspaceMemberRow>(
     'SELECT * FROM workspace_members WHERE "workspaceId" = $1 AND "userId" = $2',
     [workspaceId, userId],
@@ -340,7 +370,10 @@ export async function setMemberRole(
   userId: string,
   newRole: WorkspaceRole,
 ): Promise<WorkspaceMember> {
-  if (!usingPostgresControlStore()) return sqliteOperators.setMemberRole(workspaceId, userId, newRole);
+  if (!usingPostgresControlStore()) {
+    const sqliteOperators = await import('../operators/index.js');
+    return sqliteOperators.setMemberRole(workspaceId, userId, newRole);
+  }
   const workspace = await getWorkspace(workspaceId);
   if (!workspace) {
     throw new OperatorError('WORKSPACE_NOT_FOUND', `workspace '${workspaceId}' not found`);
@@ -373,11 +406,11 @@ export async function setMemberRole(
 }
 
 export function canApprove(role: WorkspaceRole): boolean {
-  return sqliteOperators.canApprove(role);
+  return roleCanApprove(role);
 }
 
 export function canManageMembers(role: WorkspaceRole): boolean {
-  return sqliteOperators.canManageMembers(role);
+  return roleCanManageMembers(role);
 }
 
 export { AuthError, OperatorError };

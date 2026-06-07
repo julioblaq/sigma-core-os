@@ -13,6 +13,29 @@
 
 import { randomUUID } from 'crypto';
 import { db } from '../db.js';
+import {
+  PROP_FIRM_TEMPLATES,
+  StrategyError,
+  getPropFirmDefaults,
+  type CreateStrategyInput,
+  type PropFirmDefaults,
+  type PropFirmTemplate,
+  type Strategy,
+  type StrategyRiskContext,
+  type StrategyStatus,
+  type UpdateStrategyInput,
+} from './types.js';
+
+export { PROP_FIRM_TEMPLATES, StrategyError, getPropFirmDefaults };
+export type {
+  CreateStrategyInput,
+  PropFirmDefaults,
+  PropFirmTemplate,
+  Strategy,
+  StrategyRiskContext,
+  StrategyStatus,
+  UpdateStrategyInput,
+};
 
 // ---------------------------------------------------------------------------
 // Schema migration
@@ -46,97 +69,6 @@ migrateStrategies();
 // Prop-firm templates
 // ---------------------------------------------------------------------------
 
-export type PropFirmTemplate = 'apex' | 'topstep' | 'bulenox' | 'custom';
-
-export interface PropFirmDefaults {
-  maxDailyDrawdown: number;
-  maxPositionSize: number;
-  allowedInstruments: string[];
-  defaultRR: number;
-}
-
-export const PROP_FIRM_TEMPLATES: Record<PropFirmTemplate, PropFirmDefaults> = {
-  apex: {
-    maxDailyDrawdown: 2.0,    // 2% daily drawdown limit
-    maxPositionSize: 10,       // 10 contracts max
-    allowedInstruments: ['ES', 'NQ', 'MES', 'MNQ'],
-    defaultRR: 2.0,
-  },
-  topstep: {
-    maxDailyDrawdown: 2.0,    // 2% daily loss limit
-    maxPositionSize: 5,        // 5 contracts max
-    allowedInstruments: ['ES', 'NQ', 'MES', 'MNQ'],
-    defaultRR: 2.0,
-  },
-  bulenox: {
-    maxDailyDrawdown: 1.5,    // 1.5% daily drawdown
-    maxPositionSize: 5,        // 5 contracts max
-    allowedInstruments: ['ES', 'NQ', 'MES', 'MNQ'],
-    defaultRR: 2.0,
-  },
-  custom: {
-    maxDailyDrawdown: 2.0,    // Default 2%
-    maxPositionSize: 10,
-    allowedInstruments: ['ES', 'NQ', 'MES', 'MNQ'],
-    defaultRR: 2.0,
-  },
-};
-
-export function getPropFirmDefaults(template: PropFirmTemplate): PropFirmDefaults {
-  const defaults = PROP_FIRM_TEMPLATES[template];
-  if (!defaults) {
-    throw new StrategyError('INVALID_TEMPLATE', `prop-firm template '${template}' is not valid. Allowed: ${Object.keys(PROP_FIRM_TEMPLATES).join(', ')}`);
-  }
-  return defaults;
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export type StrategyStatus = 'active' | 'archived';
-
-export interface Strategy {
-  id: string;
-  workspaceId: string;
-  name: string;
-  slug: string;
-  description: string | undefined;
-  propFirmTemplate: PropFirmTemplate;
-  maxDailyDrawdown: number;
-  maxPositionSize: number;
-  allowedInstruments: string[];
-  defaultRR: number;
-  status: StrategyStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// What the Risk Engine pulls from a strategy
-export interface StrategyRiskContext {
-  strategyId: string;
-  strategyName: string;
-  propFirmTemplate: PropFirmTemplate;
-  maxDailyDrawdown: number;
-  maxPositionSize: number;
-  allowedInstruments: string[];
-  defaultRR: number;
-}
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-export class StrategyError extends Error {
-  public readonly code: string;
-  constructor(code: string, message: string) {
-    super(`[strategies] ${message}`);
-    this.name = 'StrategyError';
-    this.code = code;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Slug generation
 // ---------------------------------------------------------------------------
 
@@ -183,18 +115,6 @@ function rowToStrategy(row: Record<string, unknown>): Strategy {
 // ---------------------------------------------------------------------------
 // createStrategy
 // ---------------------------------------------------------------------------
-
-export interface CreateStrategyInput {
-  workspaceId: string;
-  name: string;
-  description?: string;
-  propFirmTemplate?: PropFirmTemplate;
-  // Override template defaults if provided:
-  maxDailyDrawdown?: number;
-  maxPositionSize?: number;
-  allowedInstruments?: string[];
-  defaultRR?: number;
-}
 
 export function createStrategy(input: CreateStrategyInput): Strategy {
   if (!input.workspaceId || input.workspaceId.trim().length === 0) {
@@ -296,16 +216,6 @@ export function listStrategies(workspaceId: string, includeArchived = false): St
 // ---------------------------------------------------------------------------
 // updateStrategy — partial update of mutable fields
 // ---------------------------------------------------------------------------
-
-export interface UpdateStrategyInput {
-  name?: string;
-  description?: string;
-  propFirmTemplate?: PropFirmTemplate;
-  maxDailyDrawdown?: number;
-  maxPositionSize?: number;
-  allowedInstruments?: string[];
-  defaultRR?: number;
-}
 
 export function updateStrategy(id: string, input: UpdateStrategyInput): Strategy {
   const existing = getStrategy(id);

@@ -57,9 +57,9 @@ HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
 ```
 
-The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then uses `gosu` to drop execution to the `node` user before launching the API.
+The historical persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then uses `gosu` to drop execution to the `node` user before launching the API.
 
-Keep `sigma-api` at one replica while SQLite is the production store. Move to PostgreSQL before multi-replica traffic.
+Keep `sigma-api` at one replica while SQLite is the production store. With `SIGMA_CONTROL_STORE=postgres`, runtime store facades use Railway Postgres and the SQLite modules are only loaded on the local/default fallback path.
 
 Railway managed `Postgres` and `Redis` are provisioned and online. `Redis` is not wired yet. `Postgres` can now back the Sigma control store:
 
@@ -68,13 +68,18 @@ SIGMA_CONTROL_STORE=postgres
 DATABASE_URL=<Railway Postgres private/internal URL>
 ```
 
-The control store currently covers:
+The Postgres runtime store currently covers:
 
 - approvals
 - outcome log
 - memory entries
-
-Workspace, auth, strategy, journal, paper-order, and sandbox-write tables still use the existing SQLite modules until their repositories are converted.
+- users and sessions
+- workspaces and workspace members
+- strategies
+- journal entries
+- performance analytics over closed journal entries
+- paper-order audit rows
+- sandbox-write audit rows
 
 ## SQLite To Postgres Migration
 
@@ -96,7 +101,7 @@ npm run db:migrate:postgres
 
 The script creates the Postgres schema, upserts rows from all current Sigma tables, and verifies row counts. Use `--truncate` only when intentionally replacing all destination table rows.
 
-This migration command prepares the data layer. It does not switch `sigma-api` by itself. After migration verification, set `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` in Railway to move approvals, memory, and outcome logs to Postgres.
+This migration command prepares the data layer. It does not switch `sigma-api` by itself. After migration verification, set `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` in Railway to move runtime stores to Postgres.
 
 Production migration status on 2026-06-06: the command was run from the Railway `sigma-api` console against `/data/sigma.db` and managed Railway `Postgres`. Verification passed with all tables `ok`; live rows copied were `approvals=1` and `outcome_log=1`.
 

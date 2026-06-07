@@ -39,15 +39,15 @@ Environment: production
 
 | Service | Classification | Current entrypoint | Evidence | Migration notes |
 |---|---:|---|---|---|
-| Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. Uses `/data/sigma.db` by default and can move approvals, memory, and outcome logs to Railway Postgres with `SIGMA_CONTROL_STORE=postgres`. Keep single-replica until all remaining SQLite-backed runtime modules are converted. |
+| Sigma Core API | Cloud Safe | `npm start` -> `tsx apps/api/server.ts` | `package.json`, `apps/api/server.ts` | Deployed to Railway service `sigma-api` at `https://sigma-api-production-b005.up.railway.app`. Health check passes. With `SIGMA_CONTROL_STORE=postgres`, runtime store facades use Railway Postgres and do not open the local SQLite database at import time. Keep `/data/sigma.db` only as a local/single-replica rollback bridge until the next production soak pass completes. |
 | Sigma Dashboard | Cloud Safe | `cd apps/dashboard && npm run start` | `apps/dashboard/package.json`, `apps/dashboard/next.config.mjs` | Deployed to Railway service `sigma-dashboard` at `https://sigma-dashboard-production-a7a7.up.railway.app`. `/approvals` renders with HTTP 200 and points at the Railway API URL. |
-| Railway Postgres | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Postgres` (`f80547fb-42aa-42c7-afa7-018044531379`) with `postgres-volume`. Live `/data/sigma.db` data was copied and verified. Runtime support exists for approvals, memory, and outcome logs through `SIGMA_CONTROL_STORE=postgres`. |
+| Railway Postgres | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Postgres` (`f80547fb-42aa-42c7-afa7-018044531379`) with `postgres-volume`. Live `/data/sigma.db` data was copied and verified. Runtime support exists for identity, control, trading, and execution audit stores through `SIGMA_CONTROL_STORE=postgres`. |
 | Railway Redis | Cloud Safe | Managed Railway database | Railway dashboard | Online as service `Redis` (`4107f338-a335-4547-a8d3-22e5e0c67669`) with `redis-volume`. Not yet used by Sigma code; next step is queue/cache integration. |
 | Sigma Voice Agent | Cloud Safe | `sigma-dashboard` mic UI + `sigma-api` voice routes | `apps/dashboard/app/voice/page.tsx`, `core/voice/index.ts`, `apps/api/server.ts` | Voice is an operator input layer. It transcribes audio, can synthesize replies, and queues approval-gated voice task drafts. It does not execute tasks or broker actions directly. |
 | Sigma Bot TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-bot/handler.ts`, `core/router/index.ts` | Currently runs in-process when API receives `trade_plan` tasks. Keep with API for first migration, or later split into `agent-worker` when a durable queue exists. |
 | Sigma Dev TypeScript handler | Cloud Safe | Loaded by API router, not standalone | `agents/sigma-dev/handler.ts`, `core/router/index.ts` | Currently in-process. Write actions are approval-gated and sandboxed. Cloud deployment needs `SIGMA_SANDBOX_PATH` pointed at an ephemeral or persistent Railway volume depending on intended artifact retention. |
 | LLM routing client | Cloud Safe | Imported by agent handlers | `core/llm/index.ts`, `integrations/litellm/README.md` | Uses hosted OpenAI/Anthropic/LiteLLM-compatible APIs when configured with environment variables. Local Ollama fallback is not cloud safe unless replaced with a hosted/private endpoint. |
-| SQLite database file | Cloud Safe | `DB_PATH=/data/sigma.db` on Railway | `core/db.ts`, `.env.example`, `deploy/railway/sigma-api.Dockerfile` | Persistent on the attached Railway volume for the single-replica first phase. PostgreSQL migration is still recommended before scaling replicas or treating this as the final production database layer. |
+| SQLite database file | Local fallback | `DB_PATH=/data/sigma.db` on Railway only while retained | `core/db.ts`, `.env.example`, `deploy/railway/sigma-api.Dockerfile` | No longer required by the Postgres runtime path. The SQLite-backed modules are lazy-loaded only when `SIGMA_CONTROL_STORE` is left at the local/default SQLite mode. Keep as a rollback bridge until the Postgres production soak is complete. |
 | Memory store | Cloud Safe | SQLite by default, Postgres when `SIGMA_CONTROL_STORE=postgres` | `core/memory/index.ts`, `core/store/control.ts` | Cloud-safe for the first single-replica phase because SQLite uses the persistent Railway volume. Can now be switched to Railway Postgres for Sigma Bot and Sigma Dev memory entries. Redis cache integration remains future work. |
 | Approval queue and audit log | Cloud Safe | SQLite by default, Postgres when `SIGMA_CONTROL_STORE=postgres` | `core/policies/index.ts`, `core/runtime/index.ts`, `core/store/control.ts` | Critical production state is persisted on the Railway volume and copied to Railway Postgres. Runtime control-store support can move approvals, Hermes dispatch lookups, and audit logs to Postgres before wider runtime conversion. |
 | Paper broker adapter | Cloud Safe | Imported by runtime | `core/broker/index.ts` | Paper-only, no live broker credentials, and live mode is structurally rejected. Safe to run in cloud because it does not connect to Tradovate, Moomoo, IBKR, Alpaca, or OpenD. |
@@ -231,7 +231,7 @@ SIGMA_CONTROL_STORE=postgres
 DATABASE_URL=<Railway Postgres private/internal URL>
 ```
 
-This adapter moves approvals, outcome logs, memory reads/writes, users, sessions, workspaces, workspace members, strategies, journal entries, performance analytics reads, paper order audit rows, and sandbox write audit rows to Railway Postgres for the API, Hermes approval dispatch, voice approvals, risk approvals, Sigma Bot, and Sigma Dev. SQLite remains as the local/default fallback and should be lazy-loaded or removed from cloud runtime imports before multi-replica production.
+This adapter moves approvals, outcome logs, memory reads/writes, users, sessions, workspaces, workspace members, strategies, journal entries, performance analytics reads, paper order audit rows, and sandbox write audit rows to Railway Postgres for the API, Hermes approval dispatch, voice approvals, risk approvals, Sigma Bot, and Sigma Dev. SQLite remains as the local/default fallback and is lazy-loaded only when that fallback path is used.
 
 Use an isolated test database for migration validation. Do not run migration tests against the live/local `sigma.db`.
 
@@ -246,8 +246,8 @@ The clean dependency install restored the missing `node_modules` files. The exis
 
 1. Deploy `sigma-api` from `deploy/railway/sigma-api.Dockerfile`.
 2. Deploy `sigma-dashboard` from `deploy/railway/sigma-dashboard.Dockerfile`.
-3. Keep SQLite on a single Railway volume only as a temporary bridge.
-4. Use the Postgres control store for approvals, memory, and outcome logs, then convert the remaining SQLite-backed modules before multi-replica usage.
+3. Keep SQLite on a single Railway volume only as a temporary rollback bridge.
+4. Use the Postgres control store for identity, approvals, memory, strategies, journal/performance, paper orders, and sandbox write audit rows before multi-replica usage.
 5. Keep agent handlers in-process until a durable queue exists.
 6. Keep OpenD, broker desktop software, MFA sessions, and Hermes trading profile local.
 7. Audit Hermes default gateway separately before deploying it to Railway.

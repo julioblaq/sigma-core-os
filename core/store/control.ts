@@ -7,9 +7,6 @@
 
 import { randomUUID } from 'crypto';
 import type { QueryResultRow } from 'pg';
-import * as sqliteMemory from '../memory/index.js';
-import * as sqlitePolicies from '../policies/index.js';
-import * as sqliteRuntime from '../runtime/index.js';
 import type { MemEntry } from '../memory/index.js';
 import type { Approval, ApprovalStatus } from '../policies/index.js';
 import type { LogSearchParams, OutcomeEntry } from '../runtime/index.js';
@@ -239,6 +236,7 @@ export async function requestApproval(
   if (usingPostgresControlStore()) {
     return requestApprovalPostgres(agent, action, description, payload);
   }
+  const sqlitePolicies = await import('../policies/index.js');
   return sqlitePolicies.requestApproval(agent, action, description, payload);
 }
 
@@ -251,36 +249,43 @@ export async function resolveApproval(
   if (usingPostgresControlStore()) {
     return resolveApprovalPostgres(id, approved, resolvedBy, reason);
   }
+  const sqlitePolicies = await import('../policies/index.js');
   return sqlitePolicies.resolveApproval(id, approved, resolvedBy, reason);
 }
 
 export async function getApproval(id: string): Promise<Approval | null> {
   if (usingPostgresControlStore()) return getApprovalPostgres(id);
+  const sqlitePolicies = await import('../policies/index.js');
   return sqlitePolicies.getApproval(id);
 }
 
 export async function listPending(): Promise<Approval[]> {
   if (usingPostgresControlStore()) return listPendingPostgres();
+  const sqlitePolicies = await import('../policies/index.js');
   return sqlitePolicies.listPending();
 }
 
 export async function listAll(): Promise<Approval[]> {
   if (usingPostgresControlStore()) return listAllPostgres();
+  const sqlitePolicies = await import('../policies/index.js');
   return sqlitePolicies.listAll();
 }
 
 export async function logOutcome(approval: Approval, taskType: string): Promise<OutcomeEntry> {
   if (usingPostgresControlStore()) return logOutcomePostgres(approval, taskType);
+  const sqliteRuntime = await import('../runtime/index.js');
   return sqliteRuntime.logOutcome(approval, taskType);
 }
 
 export async function getLog(): Promise<OutcomeEntry[]> {
   if (usingPostgresControlStore()) return getLogPostgres();
+  const sqliteRuntime = await import('../runtime/index.js');
   return sqliteRuntime.getLog();
 }
 
 export async function searchLog(params: LogSearchParams): Promise<OutcomeEntry[]> {
   if (usingPostgresControlStore()) return searchLogPostgres(params);
+  const sqliteRuntime = await import('../runtime/index.js');
   return sqliteRuntime.searchLog(params);
 }
 
@@ -294,10 +299,12 @@ export async function memSet(
     await memSetPostgres(namespace, key, value, writtenBy);
     return;
   }
+  const sqliteMemory = await import('../memory/index.js');
   sqliteMemory.memSet(namespace, key, value, writtenBy);
 }
 
 export async function memList(namespace: string): Promise<MemEntry[]> {
   if (usingPostgresControlStore()) return memListPostgres(namespace);
+  const sqliteMemory = await import('../memory/index.js');
   return sqliteMemory.memList(namespace);
 }

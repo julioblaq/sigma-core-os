@@ -11,6 +11,25 @@
 
 import { randomUUID } from 'crypto';
 import { db } from '../db.js';
+import {
+  JournalError,
+  type CloseJournalEntryInput,
+  type CreateJournalEntryInput,
+  type JournalEntry,
+  type JournalOutcome,
+  type JournalSide,
+  type JournalSummary,
+} from './types.js';
+
+export { JournalError };
+export type {
+  CloseJournalEntryInput,
+  CreateJournalEntryInput,
+  JournalEntry,
+  JournalOutcome,
+  JournalSide,
+  JournalSummary,
+};
 
 // ---------------------------------------------------------------------------
 // Schema migration
@@ -43,53 +62,6 @@ migrateJournal();
 // Types
 // ---------------------------------------------------------------------------
 
-export type JournalSide = 'long' | 'short';
-export type JournalOutcome = 'open' | 'win' | 'loss' | 'scratch';
-
-export interface JournalEntry {
-  id: string;
-  workspaceId: string;
-  strategyId: string | undefined;
-  symbol: string;
-  side: JournalSide;
-  entryPrice: number;
-  exitPrice: number | undefined;
-  contracts: number;
-  pnlDollars: number | undefined;
-  outcome: JournalOutcome;
-  notes: string | undefined;
-  tags: string[];
-  openedAt: string;
-  closedAt: string | undefined;
-}
-
-export interface JournalSummary {
-  workspaceId: string;
-  totalTrades: number;
-  openTrades: number;
-  closedTrades: number;
-  wins: number;
-  losses: number;
-  scratches: number;
-  winRate: number;
-  totalPnl: number;
-  averagePnl: number;
-}
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-export class JournalError extends Error {
-  public readonly code: string;
-  constructor(code: string, message: string) {
-    super(`[journal] ${message}`);
-    this.name = 'JournalError';
-    this.code = code;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Mappers
 // ---------------------------------------------------------------------------
 
@@ -135,18 +107,6 @@ function rowToEntry(row: Record<string, unknown>): JournalEntry {
 // ---------------------------------------------------------------------------
 // createJournalEntry
 // ---------------------------------------------------------------------------
-
-export interface CreateJournalEntryInput {
-  workspaceId: string;
-  strategyId?: string;
-  symbol: string;
-  side: JournalSide;
-  entryPrice: number;
-  contracts: number;
-  notes?: string;
-  tags?: string[];
-  openedAt?: string;
-}
 
 export function createJournalEntry(input: CreateJournalEntryInput): JournalEntry {
   if (!input.workspaceId || input.workspaceId.trim().length === 0) {
@@ -228,14 +188,6 @@ export function listJournalEntries(
 // or we compute from price delta × contracts using a simple per-point approach.
 // Since pointValue varies per instrument, the API layer should pass pnlDollars.
 // ---------------------------------------------------------------------------
-
-export interface CloseJournalEntryInput {
-  exitPrice: number;
-  pnlDollars: number;
-  outcome: Exclude<JournalOutcome, 'open'>;
-  notes?: string;
-  closedAt?: string;
-}
 
 export function closeJournalEntry(id: string, input: CloseJournalEntryInput): JournalEntry {
   const entry = getJournalEntry(id);
