@@ -8,9 +8,9 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 
 | Railway service | Dockerfile path | Notes |
 |---|---|---|
-| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Uses `/data/sigma.db` by default; approvals, memory, and outcome logs can use Railway Postgres with `SIGMA_CONTROL_STORE=postgres`. |
+| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Production defaults to Railway Postgres with `SIGMA_CONTROL_STORE=postgres`; SQLite is local fallback only. |
 | `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
-| `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Seeded from live `/data/sigma.db`; available for the Sigma control store. |
+| `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Seeded from live `/data/sigma.db`; backs the Sigma runtime store. |
 | `Redis` | Railway managed database | Online. Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, volume `redis-volume`. Not yet used by Sigma code. |
 
 ## Railway Setup
@@ -37,8 +37,9 @@ Required or recommended:
 
 ```text
 PORT=3001
-DB_PATH=/data/sigma.db
-SIGMA_SANDBOX_PATH=/data/sandbox
+SIGMA_CONTROL_STORE=postgres
+DATABASE_URL=<Railway Postgres private/internal URL>
+SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox
 DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
 LLM_MODELS=gpt-4o
 LLM_BASE_URL=https://api.openai.com/v1
@@ -57,11 +58,11 @@ HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
 ```
 
-The historical persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then uses `gosu` to drop execution to the `node` user before launching the API.
+`DB_PATH` is intentionally omitted from the Railway production variables. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares `SIGMA_SANDBOX_PATH`, and then uses `gosu` to drop execution to the `node` user before launching the API.
 
-Keep `sigma-api` at one replica while SQLite is the production store. With `SIGMA_CONTROL_STORE=postgres`, runtime store facades use Railway Postgres and the SQLite modules are only loaded on the local/default fallback path.
+With `SIGMA_CONTROL_STORE=postgres`, runtime store facades use Railway Postgres and the SQLite modules are only loaded on the local/default fallback path. The historical `/data/sigma.db` volume can remain temporarily as an unattached rollback artifact, but the production runtime no longer depends on it.
 
-Railway managed `Postgres` and `Redis` are provisioned and online. `Redis` is not wired yet. `Postgres` can now back the Sigma control store:
+Railway managed `Postgres` and `Redis` are provisioned and online. `Redis` is not wired yet. `Postgres` backs the Sigma runtime store:
 
 ```text
 SIGMA_CONTROL_STORE=postgres

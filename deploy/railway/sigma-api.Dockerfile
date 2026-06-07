@@ -15,14 +15,14 @@ COPY core ./core
 COPY integrations ./integrations
 COPY deploy/railway/sigma-api-entrypoint.sh /usr/local/bin/sigma-api-entrypoint.sh
 
-RUN mkdir -p /data/sandbox && \
-    chown -R node:node /data /app && \
+RUN mkdir -p /tmp/sigma-sandbox && \
+    chown -R node:node /app /tmp/sigma-sandbox && \
     chmod +x /usr/local/bin/sigma-api-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3001
-ENV DB_PATH=/data/sigma.db
-ENV SIGMA_SANDBOX_PATH=/data/sandbox
+ENV SIGMA_CONTROL_STORE=postgres
+ENV SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox
 
 EXPOSE 3001
 
