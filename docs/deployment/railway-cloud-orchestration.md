@@ -34,7 +34,7 @@ Codex should not become an autonomous trading executor. Production changes, brok
 | Sigma Dashboard | Human review and operational UI | Railway `sigma-dashboard` service. |
 | Sigma Bot | Trade-plan proposal handler | Runs through Redis-backed `agent-worker` when `TASK_QUEUE_MODE=redis`; inline fallback remains for local development. |
 | Sigma Dev | Docs/code artifact proposal handler | Runs through Redis-backed `agent-worker` when `TASK_QUEUE_MODE=redis`; inline fallback remains for local development. |
-| Hermes default gateway | Local gateway process retained during stability window | Railway `hermes-agent` secured API server, reached through Sigma approval gates. |
+| Hermes default gateway | Local gateway process retained during stability window | Railway `hermes-agent` secured API server, reached through Sigma approval gates. Keep local default LaunchAgent as rollback until the 24 hour window completes. |
 | Hermes trading gateway | Trading-profile gateway | Local only until broker, OpenD, MFA, and LAN needs are proven safe. |
 | Moomoo OpenD | Local broker gateway | Local only. Never expose publicly. |
 
@@ -88,7 +88,6 @@ Live services:
 | TradingView webhook middleware | Implemented in `sigma-api` | Approval-only receiver at `/v1/webhooks/tradingview`; no broker execution. |
 | Simulated trading ops | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` sends approval-only simulated alerts through `/v1/trading/simulated-alert`. |
 | Nova voice trading draft | Implemented in `sigma-api` and `sigma-dashboard` | Dashboard `/trading` records/transcribes speech, then `/v1/voice/draft-simulated-trade` parses it into an approval-only simulated trade plan. |
-| `trading-middleware-cloud` | Parked empty shell | No source repo, no active deployment, no domain, one demo variable. Safe to delete after confirming Railway cleanup intent. |
 
 Create separate Railway services from the same GitHub repository for Sigma:
 
@@ -399,5 +398,5 @@ Today is successful when:
 - Add Redis cache integration beyond the task queue if low-latency dashboard reads need it.
 - Add real secrets through Railway variables, not git or chat.
 - Watch the `hermes-agent` 24 hour stability window before disabling the local default LaunchAgent.
-- Decide whether `HERMES_HOME=/opt/data` needs a Railway volume before relying on long-term Hermes session memory.
+- Add a Railway volume for `HERMES_HOME=/opt/data` only before relying on long-term Hermes session memory or cloud profile state.
 - Add idempotent dispatch tracking before using Hermes approvals for non-chat side effects.
