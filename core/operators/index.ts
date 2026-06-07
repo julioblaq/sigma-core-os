@@ -16,6 +16,17 @@
 
 import { randomUUID } from 'crypto';
 import { db } from '../db.js';
+import {
+  OperatorError,
+  canApprove,
+  canManageMembers,
+  type Workspace,
+  type WorkspaceMember,
+  type WorkspaceRole,
+} from './types.js';
+
+export { OperatorError, canApprove, canManageMembers };
+export type { Workspace, WorkspaceMember, WorkspaceRole };
 
 // ---------------------------------------------------------------------------
 // Schema migration
@@ -48,37 +59,6 @@ migrateOperators();
 // Types
 // ---------------------------------------------------------------------------
 
-export type WorkspaceRole = 'viewer' | 'approver' | 'admin';
-
-export interface Workspace {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-}
-
-export interface WorkspaceMember {
-  id: string;
-  workspaceId: string;
-  userId: string;
-  role: WorkspaceRole;
-  createdAt: string;
-}
-
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
-
-export class OperatorError extends Error {
-  public readonly code: string;
-  constructor(code: string, message: string) {
-    super(`[operators] ${message}`);
-    this.name = 'OperatorError';
-    this.code = code;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Slug generation
 // ---------------------------------------------------------------------------
 
@@ -288,16 +268,4 @@ export function setMemberRole(workspaceId: string, userId: string, newRole: Work
     'SELECT * FROM workspace_members WHERE workspaceId = :wid AND userId = :uid',
     { ':wid': workspaceId, ':uid': userId },
   )!);
-}
-
-// ---------------------------------------------------------------------------
-// Role permission helpers
-// ---------------------------------------------------------------------------
-
-export function canApprove(role: WorkspaceRole): boolean {
-  return role === 'approver' || role === 'admin';
-}
-
-export function canManageMembers(role: WorkspaceRole): boolean {
-  return role === 'admin';
 }

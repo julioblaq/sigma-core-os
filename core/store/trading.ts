@@ -6,9 +6,6 @@
 
 import { randomUUID } from 'crypto';
 import type { QueryResultRow } from 'pg';
-import * as sqliteStrategies from '../strategies/index.js';
-import * as sqliteJournal from '../journal/index.js';
-import * as sqlitePerformance from '../performance/index.js';
 import {
   PROP_FIRM_TEMPLATES,
   StrategyError,
@@ -18,7 +15,7 @@ import {
   type StrategyRiskContext,
   type StrategyStatus,
   type UpdateStrategyInput,
-} from '../strategies/index.js';
+} from '../strategies/types.js';
 import {
   JournalError,
   type CloseJournalEntryInput,
@@ -27,7 +24,7 @@ import {
   type JournalOutcome,
   type JournalSide,
   type JournalSummary,
-} from '../journal/index.js';
+} from '../journal/types.js';
 import type {
   CalendarDay,
   DrawdownPoint,
@@ -214,7 +211,10 @@ function validateStrategyInput(input: CreateStrategyInput): {
 }
 
 export async function createStrategy(input: CreateStrategyInput): Promise<Strategy> {
-  if (!usingPostgresControlStore()) return sqliteStrategies.createStrategy(input);
+  if (!usingPostgresControlStore()) {
+    const sqliteStrategies = await import('../strategies/index.js');
+    return sqliteStrategies.createStrategy(input);
+  }
   const validated = validateStrategyInput(input);
 
   const existing = await query<StrategyRow>(
@@ -252,13 +252,19 @@ export async function createStrategy(input: CreateStrategyInput): Promise<Strate
 }
 
 export async function getStrategy(id: string): Promise<Strategy | undefined> {
-  if (!usingPostgresControlStore()) return sqliteStrategies.getStrategy(id);
+  if (!usingPostgresControlStore()) {
+    const sqliteStrategies = await import('../strategies/index.js');
+    return sqliteStrategies.getStrategy(id);
+  }
   const result = await query<StrategyRow>('SELECT * FROM strategies WHERE id = $1', [id]);
   return result.rows[0] ? toStrategy(result.rows[0]) : undefined;
 }
 
 export async function listStrategies(workspaceId: string, includeArchived = false): Promise<Strategy[]> {
-  if (!usingPostgresControlStore()) return sqliteStrategies.listStrategies(workspaceId, includeArchived);
+  if (!usingPostgresControlStore()) {
+    const sqliteStrategies = await import('../strategies/index.js');
+    return sqliteStrategies.listStrategies(workspaceId, includeArchived);
+  }
   const result = includeArchived
     ? await query<StrategyRow>(
         'SELECT * FROM strategies WHERE "workspaceId" = $1 ORDER BY "createdAt" ASC',
@@ -272,7 +278,10 @@ export async function listStrategies(workspaceId: string, includeArchived = fals
 }
 
 export async function updateStrategy(id: string, input: UpdateStrategyInput): Promise<Strategy> {
-  if (!usingPostgresControlStore()) return sqliteStrategies.updateStrategy(id, input);
+  if (!usingPostgresControlStore()) {
+    const sqliteStrategies = await import('../strategies/index.js');
+    return sqliteStrategies.updateStrategy(id, input);
+  }
   const existing = await getStrategy(id);
   if (!existing) {
     throw new StrategyError('STRATEGY_NOT_FOUND', `strategy '${id}' not found`);
@@ -331,7 +340,10 @@ export async function updateStrategy(id: string, input: UpdateStrategyInput): Pr
 }
 
 export async function archiveStrategy(id: string): Promise<Strategy> {
-  if (!usingPostgresControlStore()) return sqliteStrategies.archiveStrategy(id);
+  if (!usingPostgresControlStore()) {
+    const sqliteStrategies = await import('../strategies/index.js');
+    return sqliteStrategies.archiveStrategy(id);
+  }
   const existing = await getStrategy(id);
   if (!existing) {
     throw new StrategyError('STRATEGY_NOT_FOUND', `strategy '${id}' not found`);
@@ -348,7 +360,10 @@ export async function archiveStrategy(id: string): Promise<Strategy> {
 }
 
 export async function getStrategyRiskContext(strategyId: string): Promise<StrategyRiskContext> {
-  if (!usingPostgresControlStore()) return sqliteStrategies.getStrategyRiskContext(strategyId);
+  if (!usingPostgresControlStore()) {
+    const sqliteStrategies = await import('../strategies/index.js');
+    return sqliteStrategies.getStrategyRiskContext(strategyId);
+  }
   const strategy = await getStrategy(strategyId);
   if (!strategy) {
     throw new StrategyError('STRATEGY_NOT_FOUND', `strategy '${strategyId}' not found`);
@@ -369,7 +384,10 @@ export async function getStrategyRiskContext(strategyId: string): Promise<Strate
 }
 
 export async function createJournalEntry(input: CreateJournalEntryInput): Promise<JournalEntry> {
-  if (!usingPostgresControlStore()) return sqliteJournal.createJournalEntry(input);
+  if (!usingPostgresControlStore()) {
+    const sqliteJournal = await import('../journal/index.js');
+    return sqliteJournal.createJournalEntry(input);
+  }
   if (!input.workspaceId || input.workspaceId.trim().length === 0) {
     throw new JournalError('INVALID_WORKSPACE', 'workspaceId is required');
   }
@@ -410,13 +428,19 @@ export async function createJournalEntry(input: CreateJournalEntryInput): Promis
 }
 
 export async function getJournalEntry(id: string): Promise<JournalEntry | undefined> {
-  if (!usingPostgresControlStore()) return sqliteJournal.getJournalEntry(id);
+  if (!usingPostgresControlStore()) {
+    const sqliteJournal = await import('../journal/index.js');
+    return sqliteJournal.getJournalEntry(id);
+  }
   const result = await query<JournalRow>('SELECT * FROM journal_entries WHERE id = $1', [id]);
   return result.rows[0] ? toJournalEntry(result.rows[0]) : undefined;
 }
 
 export async function listJournalEntries(workspaceId: string, strategyId?: string): Promise<JournalEntry[]> {
-  if (!usingPostgresControlStore()) return sqliteJournal.listJournalEntries(workspaceId, strategyId);
+  if (!usingPostgresControlStore()) {
+    const sqliteJournal = await import('../journal/index.js');
+    return sqliteJournal.listJournalEntries(workspaceId, strategyId);
+  }
   const result = strategyId
     ? await query<JournalRow>(
         'SELECT * FROM journal_entries WHERE "workspaceId" = $1 AND "strategyId" = $2 ORDER BY "openedAt" DESC',
@@ -430,7 +454,10 @@ export async function listJournalEntries(workspaceId: string, strategyId?: strin
 }
 
 export async function closeJournalEntry(id: string, input: CloseJournalEntryInput): Promise<JournalEntry> {
-  if (!usingPostgresControlStore()) return sqliteJournal.closeJournalEntry(id, input);
+  if (!usingPostgresControlStore()) {
+    const sqliteJournal = await import('../journal/index.js');
+    return sqliteJournal.closeJournalEntry(id, input);
+  }
   const entry = await getJournalEntry(id);
   if (!entry) {
     throw new JournalError('ENTRY_NOT_FOUND', `journal entry '${id}' not found`);
@@ -467,7 +494,10 @@ export async function closeJournalEntry(id: string, input: CloseJournalEntryInpu
 }
 
 export async function getJournalSummary(workspaceId: string, strategyId?: string): Promise<JournalSummary> {
-  if (!usingPostgresControlStore()) return sqliteJournal.getJournalSummary(workspaceId, strategyId);
+  if (!usingPostgresControlStore()) {
+    const sqliteJournal = await import('../journal/index.js');
+    return sqliteJournal.getJournalSummary(workspaceId, strategyId);
+  }
   const entries = await listJournalEntries(workspaceId, strategyId);
   const closed = entries.filter(e => e.outcome !== 'open');
   const wins = closed.filter(e => e.outcome === 'win').length;
@@ -552,7 +582,10 @@ function calcProfitFactor(entries: ClosedEntry[]): number {
 }
 
 export async function getPerformanceSummary(f: PerformanceFilter): Promise<PerformanceSummary> {
-  if (!usingPostgresControlStore()) return sqlitePerformance.getPerformanceSummary(f);
+  if (!usingPostgresControlStore()) {
+    const sqlitePerformance = await import('../performance/index.js');
+    return sqlitePerformance.getPerformanceSummary(f);
+  }
   const entries = await fetchClosed(f);
   const wins = entries.filter(e => e.outcome === 'win');
   const losses = entries.filter(e => e.outcome === 'loss');
@@ -592,7 +625,10 @@ export async function getPerformanceSummary(f: PerformanceFilter): Promise<Perfo
 }
 
 export async function getEquityCurve(f: PerformanceFilter): Promise<EquityPoint[]> {
-  if (!usingPostgresControlStore()) return sqlitePerformance.getEquityCurve(f);
+  if (!usingPostgresControlStore()) {
+    const sqlitePerformance = await import('../performance/index.js');
+    return sqlitePerformance.getEquityCurve(f);
+  }
   const entries = await fetchClosed(f);
   let cumulative = 0;
   return entries.map(e => {
@@ -607,7 +643,10 @@ export async function getEquityCurve(f: PerformanceFilter): Promise<EquityPoint[
 }
 
 export async function getDrawdown(f: PerformanceFilter): Promise<DrawdownPoint[]> {
-  if (!usingPostgresControlStore()) return sqlitePerformance.getDrawdown(f);
+  if (!usingPostgresControlStore()) {
+    const sqlitePerformance = await import('../performance/index.js');
+    return sqlitePerformance.getDrawdown(f);
+  }
   const curve = await getEquityCurve(f);
   if (curve.length === 0) return [];
 
@@ -621,14 +660,20 @@ export async function getDrawdown(f: PerformanceFilter): Promise<DrawdownPoint[]
 }
 
 export async function getMaxDrawdown(f: PerformanceFilter): Promise<number> {
-  if (!usingPostgresControlStore()) return sqlitePerformance.getMaxDrawdown(f);
+  if (!usingPostgresControlStore()) {
+    const sqlitePerformance = await import('../performance/index.js');
+    return sqlitePerformance.getMaxDrawdown(f);
+  }
   const points = await getDrawdown(f);
   if (points.length === 0) return 0;
   return Math.max(...points.map(p => p.drawdown));
 }
 
 export async function getCalendar(f: PerformanceFilter): Promise<CalendarDay[]> {
-  if (!usingPostgresControlStore()) return sqlitePerformance.getCalendar(f);
+  if (!usingPostgresControlStore()) {
+    const sqlitePerformance = await import('../performance/index.js');
+    return sqlitePerformance.getCalendar(f);
+  }
   const entries = await fetchClosed(f);
   const byDay = new Map<string, CalendarDay>();
 
@@ -658,7 +703,10 @@ function buildBreakdownStats(entries: ClosedEntry[]): {
 }
 
 export async function getBreakdown(f: PerformanceFilter): Promise<PerformanceBreakdown> {
-  if (!usingPostgresControlStore()) return sqlitePerformance.getBreakdown(f);
+  if (!usingPostgresControlStore()) {
+    const sqlitePerformance = await import('../performance/index.js');
+    return sqlitePerformance.getBreakdown(f);
+  }
   const entries = await fetchClosed(f);
   const stratMap = new Map<string, ClosedEntry[]>();
   for (const e of entries) {

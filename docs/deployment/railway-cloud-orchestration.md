@@ -166,7 +166,7 @@ This switch moves these API and agent surfaces to Railway Postgres:
 - Sigma Bot and Sigma Dev memory writes
 - outcome log reads/searches/writes
 
-The remaining database follow-up is to lazy-load or remove SQLite fallback imports before scaling replicas. Keep `DB_PATH=/data/sigma.db` until that cleanup and one more production soak pass are complete.
+SQLite fallback imports are now lazy-loaded behind the local/default store mode. With `SIGMA_CONTROL_STORE=postgres`, the cloud store facades load without opening the SQLite database. Keep `DB_PATH=/data/sigma.db` only as a local/single-replica rollback bridge until one more production soak pass is complete.
 
 
 ## Variables
@@ -193,7 +193,8 @@ HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
 HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
 HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
-SIGMA_CONTROL_STORE=sqlite
+SIGMA_CONTROL_STORE=postgres
+DATABASE_URL=<Railway Postgres private/internal URL>
 ```
 
 Use `SIGMA_CONTROL_STORE=postgres` only after `DATABASE_URL` points at the managed Railway Postgres service.
