@@ -63,7 +63,11 @@ Status: Cloud migration baseline is live.
 - `hermes-agent` model listing through `sigma-api` returned model `hermes-agent`.
 - Approval-gated Hermes chat dispatch returned: `Hermes cloud bridge healthy.`
 - `/v1/task` queued through Redis and `agent-worker` wrote a result.
+- `/v1/tasks?limit=50` listed recent jobs and repaired stale queued rows from legacy worker results during the deploy window.
+- `/v1/nova/query` returned non-executable `intent=null`.
+- `/v1/nova/journal` created a durable journal memory entry with a screenshot pointer.
 - Nova voice simulated trade draft queued an approval and the smoke approval was denied.
 - Simulated trading alert queued an approval and the smoke approval was denied.
+- `/v1/trading/config` returned `tradingMode=dry-run`, `executionMode=approval_only`, and `brokerExecution=false`.
 - `DB_PATH` is absent from `sigma-api` Railway variables.
 - `SIGMA_CONTROL_STORE=postgres` and `SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox` are live on `sigma-api`.
