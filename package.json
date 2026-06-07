@@ -9,6 +9,7 @@
     "start:worker": "tsx apps/worker/agent-worker.ts",
     "start": "tsx apps/api/server.ts",
     "dashboard": "cd apps/dashboard && npm run dev",
+    "cloud:watch": "node scripts/cloud-watch.mjs",
     "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts tests/llm.test.ts tests/voice.test.ts tests/hermes.test.ts tests/sigma-dev.test.ts tests/sandbox.test.ts tests/broker.test.ts tests/risk.test.ts tests/operators.test.ts tests/strategies.test.ts tests/journal.test.ts tests/audit-search.test.ts tests/auth.test.ts tests/performance.test.ts tests/github.test.ts tests/task-queue.test.ts tests/nova.test.ts tests/webhooks.test.ts tests/simulated-alert.test.ts tests/voice-trading.test.ts",
     "test:isolated": "DB_PATH=${DB_PATH:-/tmp/sigma-core-os-test.db} npm test",
     "db:migrate:postgres": "tsx scripts/migrate-sqlite-to-postgres.ts",

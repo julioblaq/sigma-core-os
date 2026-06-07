@@ -71,3 +71,15 @@ Status: Cloud migration baseline is live.
 - `/v1/trading/config` returned `tradingMode=dry-run`, `executionMode=approval_only`, and `brokerExecution=false`.
 - `DB_PATH` is absent from `sigma-api` Railway variables.
 - `SIGMA_CONTROL_STORE=postgres` and `SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox` are live on `sigma-api`.
+
+## Automated Cloud Watch
+
+GitHub Actions runs `.github/workflows/cloud-watch.yml` hourly at minute 17. The scheduled run checks:
+
+- `sigma-api` health.
+- `sigma-dashboard` `/trading`.
+- `hermes-agent` health.
+- Trading safety config remains `dry-run` with broker execution disabled.
+- Nova query response contract remains read-only and non-blocking.
+
+Manual workflow dispatch can enable `write_smoke=true` for the deeper audit. That mode also creates a Nova journal smoke entry, queues one Nova voice draft approval, and immediately denies the smoke approval with reason `Automated cloud watch cleanup`.
