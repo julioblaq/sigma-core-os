@@ -87,7 +87,8 @@ import {
   getStrategyRiskContext,
   StrategyError,
   type PropFirmTemplate,
-} from '../../core/strategies/index.js';
+  type StrategyRiskContext,
+} from '../../core/store/trading.js';
 import {
   createJournalEntry,
   getJournalEntry,
@@ -97,7 +98,7 @@ import {
   JournalError,
   type JournalSide,
   type JournalOutcome,
-} from '../../core/journal/index.js';
+} from '../../core/store/trading.js';
 import {
   getPerformanceSummary,
   getEquityCurve,
@@ -105,7 +106,7 @@ import {
   getCalendar,
   getBreakdown,
   type PerformanceFilter,
-} from '../../core/performance/index.js';
+} from '../../core/store/trading.js';
 import {
   register,
   login,
@@ -651,7 +652,7 @@ app.post<{ Body: {
       const { strategyId, ...sizeInput } = req.body;
       const result = calcPositionSize(sizeInput);
       if (strategyId) {
-        const ctx = getStrategyRiskContext(strategyId);
+        const ctx = await getStrategyRiskContext(strategyId);
         const warnings = [...result.warnings];
         if (!ctx.allowedInstruments.includes(sizeInput.symbol.toUpperCase())) {
           return reply.code(400).send({ error: `instrument '${sizeInput.symbol}' is not allowed by strategy '${ctx.strategyName}'`, code: 'INSTRUMENT_NOT_ALLOWED' });
@@ -686,9 +687,9 @@ app.post<{ Body: {
     try {
       const { strategyId, rr: rrOverride, ...tpslBase } = req.body;
       let rr = rrOverride;
-      let strategyContext: ReturnType<typeof getStrategyRiskContext> | undefined;
+      let strategyContext: StrategyRiskContext | undefined;
       if (strategyId) {
-        strategyContext = getStrategyRiskContext(strategyId);
+        strategyContext = await getStrategyRiskContext(strategyId);
         if (!strategyContext.allowedInstruments.includes(tpslBase.symbol.toUpperCase())) {
           return reply.code(400).send({ error: `instrument '${tpslBase.symbol}' is not allowed by strategy '${strategyContext.strategyName}'`, code: 'INSTRUMENT_NOT_ALLOWED' });
         }
@@ -729,9 +730,9 @@ app.post<{ Body: {
     try {
       const { submittedBy = 'dashboard', strategyId, ...planBase } = req.body;
       let planInput: TradePlanInput = planBase as TradePlanInput;
-      let strategyContext: ReturnType<typeof getStrategyRiskContext> | undefined;
+      let strategyContext: StrategyRiskContext | undefined;
       if (strategyId) {
-        strategyContext = getStrategyRiskContext(strategyId);
+        strategyContext = await getStrategyRiskContext(strategyId);
         if (!strategyContext.allowedInstruments.includes(planBase.symbol.toUpperCase())) {
           return reply.code(400).send({ error: `instrument '${planBase.symbol}' is not allowed by strategy '${strategyContext.strategyName}'`, code: 'INSTRUMENT_NOT_ALLOWED' });
         }
@@ -839,7 +840,7 @@ app.get<{ Params: { id: string }; Querystring: { includeArchived?: string } }>(
     try {
       const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      return listStrategies(req.params.id, req.query.includeArchived === 'true');
+      return await listStrategies(req.params.id, req.query.includeArchived === 'true');
     } catch (err) {
       if (err instanceof StrategyError) return reply.code(404).send({ error: err.message, code: err.code });
       throw err;
@@ -870,7 +871,7 @@ app.post<{ Params: { id: string }; Body: {
       if (!requester || requester.role === 'viewer') {
         return reply.code(403).send({ error: 'viewers cannot create strategies' });
       }
-      const strategy = createStrategy({ workspaceId: req.params.id, ...req.body });
+      const strategy = await createStrategy({ workspaceId: req.params.id, ...req.body });
       return reply.code(201).send(strategy);
     } catch (err) {
       if (err instanceof StrategyError) {
@@ -883,7 +884,7 @@ app.post<{ Params: { id: string }; Body: {
 );
 
 app.get<{ Params: { id: string } }>('/v1/strategies/:id', async (req, reply) => {
-  const strategy = getStrategy(req.params.id);
+  const strategy = await getStrategy(req.params.id);
   if (!strategy) return reply.code(404).send({ error: 'strategy not found' });
   return strategy;
 });
@@ -905,13 +906,13 @@ app.patch<{ Params: { id: string }; Body: {
   async (req, reply) => {
     try {
       const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
-      const strategy = getStrategy(req.params.id);
+      const strategy = await getStrategy(req.params.id);
       if (!strategy) return reply.code(404).send({ error: 'strategy not found' });
       const requester = await getMember(strategy.workspaceId, requesterId);
       if (!requester || requester.role === 'viewer') {
         return reply.code(403).send({ error: 'viewers cannot update strategies' });
       }
-      return updateStrategy(req.params.id, req.body);
+      return await updateStrategy(req.params.id, req.body);
     } catch (err) {
       if (err instanceof StrategyError) {
         const statusMap: Record<string, number> = {
@@ -927,13 +928,13 @@ app.patch<{ Params: { id: string }; Body: {
 app.delete<{ Params: { id: string } }>('/v1/strategies/:id', async (req, reply) => {
   try {
     const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
-    const strategy = getStrategy(req.params.id);
+    const strategy = await getStrategy(req.params.id);
     if (!strategy) return reply.code(404).send({ error: 'strategy not found' });
     const requester = await getMember(strategy.workspaceId, requesterId);
     if (!requester || !canManageMembers(requester.role)) {
       return reply.code(403).send({ error: 'only admins can archive strategies' });
     }
-    return archiveStrategy(req.params.id);
+    return await archiveStrategy(req.params.id);
   } catch (err) {
     if (err instanceof StrategyError) {
       const statusMap: Record<string, number> = { STRATEGY_NOT_FOUND: 404, ALREADY_ARCHIVED: 409 };
@@ -953,7 +954,7 @@ app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
     try {
       const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      return listJournalEntries(req.params.id, req.query.strategyId);
+      return await listJournalEntries(req.params.id, req.query.strategyId);
     } catch (err) {
       if (err instanceof JournalError) return reply.code(400).send({ error: err.message, code: err.code });
       throw err;
@@ -980,7 +981,7 @@ app.post<{ Params: { id: string }; Body: {
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
       const requester = await getMember(req.params.id, requesterId);
       if (!requester) return reply.code(403).send({ error: 'not a member of this workspace' });
-      const entry = createJournalEntry({ workspaceId: req.params.id, ...req.body });
+      const entry = await createJournalEntry({ workspaceId: req.params.id, ...req.body });
       return reply.code(201).send(entry);
     } catch (err) {
       if (err instanceof JournalError) {
@@ -993,7 +994,7 @@ app.post<{ Params: { id: string }; Body: {
 );
 
 app.get<{ Params: { id: string } }>('/v1/journal/:id', async (req, reply) => {
-  const entry = getJournalEntry(req.params.id);
+  const entry = await getJournalEntry(req.params.id);
   if (!entry) return reply.code(404).send({ error: 'journal entry not found' });
   return entry;
 });
@@ -1012,7 +1013,7 @@ app.post<{ Params: { id: string }; Body: {
   async (req, reply) => {
     try {
       const requesterId = await getUserId(req as Parameters<typeof getUserId>[0]);
-      const entry = getJournalEntry(req.params.id);
+      const entry = await getJournalEntry(req.params.id);
       if (!entry) return reply.code(404).send({ error: 'journal entry not found' });
       const workspaceId = req.headers['x-workspace-id'];
       if (workspaceId && typeof workspaceId === 'string') {
@@ -1022,7 +1023,7 @@ app.post<{ Params: { id: string }; Body: {
           return reply.code(403).send({ error: `role '${member.role}' cannot close journal entries` });
         }
       }
-      return closeJournalEntry(req.params.id, req.body);
+      return await closeJournalEntry(req.params.id, req.body);
     } catch (err) {
       if (err instanceof JournalError) {
         const statusMap: Record<string, number> = { ENTRY_NOT_FOUND: 404, ALREADY_CLOSED: 409, INVALID_PRICE: 400, INVALID_PNL: 400, INVALID_OUTCOME: 400 };
@@ -1039,7 +1040,7 @@ app.get<{ Params: { id: string }; Querystring: { strategyId?: string } }>(
     try {
       const ws = await getWorkspace(req.params.id);
       if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-      return getJournalSummary(req.params.id, req.query.strategyId);
+      return await getJournalSummary(req.params.id, req.query.strategyId);
     } catch (err) {
       if (err instanceof JournalError) return reply.code(400).send({ error: err.message, code: err.code });
       throw err;
@@ -1070,7 +1071,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   async (req, reply) => {
     const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-    return getPerformanceSummary(perfFilter(req.params.id, req.query));
+    return await getPerformanceSummary(perfFilter(req.params.id, req.query));
   },
 );
 
@@ -1080,7 +1081,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   async (req, reply) => {
     const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-    return getEquityCurve(perfFilter(req.params.id, req.query));
+    return await getEquityCurve(perfFilter(req.params.id, req.query));
   },
 );
 
@@ -1090,7 +1091,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   async (req, reply) => {
     const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-    return getDrawdown(perfFilter(req.params.id, req.query));
+    return await getDrawdown(perfFilter(req.params.id, req.query));
   },
 );
 
@@ -1100,7 +1101,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   async (req, reply) => {
     const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-    return getCalendar(perfFilter(req.params.id, req.query));
+    return await getCalendar(perfFilter(req.params.id, req.query));
   },
 );
 
@@ -1110,7 +1111,7 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
   async (req, reply) => {
     const ws = await getWorkspace(req.params.id);
     if (!ws) return reply.code(404).send({ error: 'workspace not found' });
-    return getBreakdown(perfFilter(req.params.id, req.query));
+    return await getBreakdown(perfFilter(req.params.id, req.query));
   },
 );
 
