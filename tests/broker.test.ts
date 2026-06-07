@@ -237,13 +237,13 @@ describe('submitPaperOrder', () => {
 // ---------------------------------------------------------------------------
 
 describe('executeTrade - runtime flow', () => {
-  it('approved trade_plan submits paper order', () => {
+  it('approved trade_plan submits paper order', async () => {
     const pending  = makeTradeApproval('ES', 'long', 1, 5000, 4980, 5040);
     const resolved = resolveApproval(pending.id, true, 'julio');
     assert.ok(resolved);
     assert.equal(resolved.status, 'approved');
 
-    const result = executeTrade(resolved);
+    const result = await executeTrade(resolved);
     assert.equal(result.outcome, 'submitted');
     if (result.outcome === 'submitted') {
       assert.equal(result.orderResult.symbol, 'ES');
@@ -260,12 +260,12 @@ describe('executeTrade - runtime flow', () => {
     }
   });
 
-  it('denied approval submits nothing', () => {
+  it('denied approval submits nothing', async () => {
     const pending  = makeTradeApproval('NQ', 'short', 1, 18000, 18050, 17900);
     const resolved = resolveApproval(pending.id, false, 'julio', 'market closed');
     assert.ok(resolved);
 
-    const result = executeTrade(resolved);
+    const result = await executeTrade(resolved);
     assert.equal(result.outcome, 'denied');
     if (result.outcome === 'denied') {
       assert.equal(result.reason, 'market closed');
@@ -276,25 +276,25 @@ describe('executeTrade - runtime flow', () => {
     assert.ok(!orders.some(o => o.approvalId === pending.id), 'no order for denied approval');
   });
 
-  it('immutability enforced - second resolve returns null', () => {
+  it('immutability enforced - second resolve returns null', async () => {
     const pending  = makeTradeApproval('MNQ', 'long', 2, 19000, 18950, 19100);
     const resolved = resolveApproval(pending.id, true, 'julio');
     assert.ok(resolved);
 
-    executeTrade(resolved);
+    await executeTrade(resolved);
 
     const second = resolveApproval(pending.id, true, 'julio');
     assert.equal(second, null, 'second resolve must be null - immutability enforced');
   });
 
-  it('blocked when signal missing risk fields', () => {
+  it('blocked when signal missing risk fields', async () => {
     // Create approval with signal missing stop/target
     const badSignal = { symbol: 'ES', direction: 'long', quantity: 1 }; // no entry/stop/target
     const pending = requestApproval('sigma-bot', 'trade_plan', 'bad signal', { taskId: randomUUID(), signal: badSignal });
     const resolved = resolveApproval(pending.id, true, 'julio');
     assert.ok(resolved);
 
-    const result = executeTrade(resolved);
+    const result = await executeTrade(resolved);
     assert.equal(result.outcome, 'blocked');
     assert.ok((result as { outcome: 'blocked'; error: string }).error.length > 0);
   });
