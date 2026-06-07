@@ -2,7 +2,7 @@
 
 Owner: Jerry Hicks Jr.
 Date: 2026-06-07
-Status: Implementation ready for Railway deploy verification.
+Status: Live verified on Railway after PRs #22 and #23.
 
 ## Summary
 
@@ -77,9 +77,19 @@ DB_PATH=/tmp/sigma-core-os-audit-full.db npm test
 NEXT_PUBLIC_API_URL=https://sigma-api-production-b005.up.railway.app npm --prefix apps/dashboard run build
 ```
 
-## Live Smoke Targets
+## Live Smoke Results
 
-After Railway deploys the PR, verify:
+- [x] `GET /v1/trading/config` returned `tradingMode = dry-run`, `executionMode = approval_only`, and `brokerExecution = false`.
+- [x] `POST /v1/nova/query` returned `intent = null` with screen/session highlights.
+- [x] `POST /v1/nova/journal` created a durable entry with a `memory://nova-screenshot/...` pointer.
+- [x] `POST /v1/task` returned `202 Accepted`, then `GET /v1/task/:id` moved from `queued` to final `failed` for the harmless `unknown_task` smoke.
+- [x] `GET /v1/tasks?limit=50` listed recent task status rows and hydrated stale queued rows from legacy worker results during the deploy window.
+- [x] `POST /v1/voice/draft-simulated-trade` returned `202 Accepted`, queued an approval, and kept `brokerExecution = false`.
+- [x] The smoke voice-trade approval was denied.
+- [x] `POST /v1/webhooks/tradingview` without a secret returned `401`.
+- [x] Dashboard `/tasks` rendered the Background Tasks view.
+
+Live endpoints checked:
 
 ```text
 GET  /v1/trading/config
