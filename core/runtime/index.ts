@@ -10,15 +10,10 @@ import { db } from '../db.js';
 import type { Approval } from '../policies/index.js';
 import {
   executeSandboxWrite,
-  SandboxWriteResult,
-  SandboxViolationError,
-} from '../sandbox/index.js';
-import {
   submitPaperOrder,
-  PaperOrderResult,
-  BrokerModeError,
-  OrderValidationError,
-} from '../broker/index.js';
+  type PaperOrderResult,
+  type SandboxWriteResult,
+} from '../store/execution.js';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS outcome_log (
@@ -162,7 +157,7 @@ export function searchLog(params: LogSearchParams): OutcomeEntry[] {
 // executeWrite - sandboxed file write for approved dev_task artifacts
 // ---------------------------------------------------------------------------
 
-export function executeWrite(approval: Approval): WriteResult {
+export async function executeWrite(approval: Approval): Promise<WriteResult> {
   if (approval.status !== 'approved') {
     console.log(`[runtime] write skipped: approval ${approval.id} status=${approval.status}`);
     return { outcome: 'denied', reason: approval.reason ?? 'not approved' };
@@ -186,7 +181,7 @@ export function executeWrite(approval: Approval): WriteResult {
   const overwriteApproved = !!(payload.overwriteApproved ?? artifact.overwriteApproved ?? false);
 
   try {
-    const sandboxResult = executeSandboxWrite(
+    const sandboxResult = await executeSandboxWrite(
       approval.id, action, approval.agent, filePath, content,
       approval.resolvedBy, overwriteApproved,
     );
@@ -206,7 +201,7 @@ export function executeWrite(approval: Approval): WriteResult {
 // Approved = signal extracted from payload, validated, submitted to paper broker.
 // ---------------------------------------------------------------------------
 
-export function executeTrade(approval: Approval): TradeResult {
+export async function executeTrade(approval: Approval): Promise<TradeResult> {
   if (approval.status !== 'approved') {
     console.log(`[runtime] trade skipped: approval ${approval.id} status=${approval.status}`);
     return { outcome: 'denied', reason: approval.reason ?? 'not approved' };
@@ -232,7 +227,7 @@ export function executeTrade(approval: Approval): TradeResult {
   }
 
   try {
-    const orderResult = submitPaperOrder({
+    const orderResult = await submitPaperOrder({
       approvalId: approval.id,
       symbol,
       side: side as 'long' | 'short',

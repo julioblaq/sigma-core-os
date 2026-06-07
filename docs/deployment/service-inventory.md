@@ -157,7 +157,7 @@ The repository now has Dockerfile-based Railway deployment assets for the Sigma 
 - `docker-compose.yml`
 - process manager config
 - queue worker entrypoint
-- Full runtime repository support for paper orders and sandbox writes under `DATABASE_URL`
+- Lazy-loaded SQLite fallback cleanup before multi-replica production
 - Redis queue/cache integration and repository support for `REDIS_URL`
 - CI/CD deployment workflow
 
@@ -231,7 +231,7 @@ SIGMA_CONTROL_STORE=postgres
 DATABASE_URL=<Railway Postgres private/internal URL>
 ```
 
-This adapter moves approvals, outcome logs, memory reads/writes, users, sessions, workspaces, workspace members, strategies, journal entries, and performance analytics reads to Railway Postgres for the API, Hermes approval dispatch, voice approvals, risk approvals, Sigma Bot, and Sigma Dev. Paper orders and sandbox writes still read/write SQLite and should be migrated in later slices.
+This adapter moves approvals, outcome logs, memory reads/writes, users, sessions, workspaces, workspace members, strategies, journal entries, performance analytics reads, paper order audit rows, and sandbox write audit rows to Railway Postgres for the API, Hermes approval dispatch, voice approvals, risk approvals, Sigma Bot, and Sigma Dev. SQLite remains as the local/default fallback and should be lazy-loaded or removed from cloud runtime imports before multi-replica production.
 
 Use an isolated test database for migration validation. Do not run migration tests against the live/local `sigma.db`.
 

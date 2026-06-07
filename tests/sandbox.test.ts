@@ -201,7 +201,7 @@ describe('executeWrite - runtime approval flow', () => {
     assert.ok(resolved);
     assert.equal(resolved.status, 'approved');
 
-    const result = executeWrite(resolved);
+    const result = await executeWrite(resolved);
     assert.equal(result.outcome, 'written');
     if (result.outcome === 'written') {
       assert.ok(result.sandboxResult.sandboxPath.includes('runtime'));
@@ -223,7 +223,7 @@ describe('executeWrite - runtime approval flow', () => {
     assert.ok(resolved);
     assert.equal(resolved.status, 'denied');
 
-    const result = executeWrite(resolved);
+    const result = await executeWrite(resolved);
     assert.equal(result.outcome, 'denied');
 
     // File must NOT exist
@@ -231,7 +231,7 @@ describe('executeWrite - runtime approval flow', () => {
     assert.ok(!existsSync(expectedPath), 'file must not be written after denial');
   });
 
-  it('immutability enforced - double resolve returns null, executeWrite not called again', () => {
+  it('immutability enforced - double resolve returns null, executeWrite not called again', async () => {
     const filePath = `runtime/immutable-${randomUUID()}.ts`;
     const pending = makeApproval('generate_code', filePath, 'immutable content');
 
@@ -239,7 +239,7 @@ describe('executeWrite - runtime approval flow', () => {
     assert.ok(resolved);
 
     // First write succeeds
-    const result1 = executeWrite(resolved);
+    const result1 = await executeWrite(resolved);
     assert.equal(result1.outcome, 'written');
 
     // Second resolve attempt returns null - immutability upheld
@@ -247,7 +247,7 @@ describe('executeWrite - runtime approval flow', () => {
     assert.equal(second, null, 'second resolve must be null');
   });
 
-  it('write outside sandbox via approval is blocked', () => {
+  it('write outside sandbox via approval is blocked', async () => {
     // Craft an artifact with a path that would escape sandbox
     const artifact = {
       action: 'scaffold_file',
@@ -261,13 +261,13 @@ describe('executeWrite - runtime approval flow', () => {
     const resolved = resolveApproval(pending.id, true, 'attacker');
     assert.ok(resolved);
 
-    const result = executeWrite(resolved);
+    const result = await executeWrite(resolved);
     // Should be blocked or thrown - the runtime catches SandboxViolationError
     assert.equal(result.outcome, 'blocked', 'path traversal must be blocked');
     assert.ok((result as { outcome: 'blocked'; error: string }).error.length > 0);
   });
 
-  it('absolute path in artifact is blocked', () => {
+  it('absolute path in artifact is blocked', async () => {
     const artifact = {
       action: 'scaffold_file',
       filePath: '/tmp/absolute-attack.ts',
@@ -280,18 +280,18 @@ describe('executeWrite - runtime approval flow', () => {
     const resolved = resolveApproval(pending.id, true, 'attacker');
     assert.ok(resolved);
 
-    const result = executeWrite(resolved);
+    const result = await executeWrite(resolved);
     assert.equal(result.outcome, 'blocked');
   });
 
-  it('checksum pre and post match for successful write', () => {
+  it('checksum pre and post match for successful write', async () => {
     const content = 'export const checksum = "test";';
     const filePath = `runtime/checksum-${randomUUID()}.ts`;
     const pending = makeApproval('generate_code', filePath, content);
     const resolved = resolveApproval(pending.id, true, 'julio');
     assert.ok(resolved);
 
-    const result = executeWrite(resolved);
+    const result = await executeWrite(resolved);
     assert.equal(result.outcome, 'written');
     if (result.outcome === 'written') {
       assert.equal(result.sandboxResult.checksumPre, sha256(content));

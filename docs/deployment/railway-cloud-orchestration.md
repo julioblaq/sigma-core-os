@@ -143,7 +143,7 @@ all other current Sigma tables: 0 -> 0
 verify-only pass: ok
 ```
 
-Runtime Postgres support now exists for the Sigma control, identity, and trading stores:
+Runtime Postgres support now exists for the Sigma control, identity, trading, and execution stores:
 
 ```text
 SIGMA_CONTROL_STORE=postgres
@@ -161,13 +161,13 @@ This switch moves these API and agent surfaces to Railway Postgres:
 - strategy profile reads/writes
 - journal entry reads/writes
 - performance analytics over closed journal entries
+- paper order audit reads/writes
+- sandbox write audit reads/writes
 - Sigma Bot and Sigma Dev memory writes
 - outcome log reads/searches/writes
 
-These surfaces still use SQLite until their repository modules are converted:
+The remaining database follow-up is to lazy-load or remove SQLite fallback imports before scaling replicas. Keep `DB_PATH=/data/sigma.db` until that cleanup and one more production soak pass are complete.
 
-- paper orders
-- sandbox writes
 
 ## Variables
 
