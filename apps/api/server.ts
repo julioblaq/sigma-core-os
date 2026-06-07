@@ -39,6 +39,7 @@
 // POST /v1/voice/transcribe
 // POST /v1/voice/speech
 // POST /v1/voice/draft-task
+// POST /v1/voice/draft-simulated-trade
 // GET  /v1/hermes/config
 // GET  /v1/hermes/status
 // GET  /v1/hermes/models
@@ -132,6 +133,10 @@ import {
   VoiceProviderError,
   type VoiceProvider,
 } from '../../core/voice/index.js';
+import {
+  parseVoiceTradeDraft,
+  VoiceTradeParseError,
+} from '../../core/voice/trading.js';
 import {
   getHermesConfig,
   getHermesStatus,
@@ -499,6 +504,102 @@ app.post<{
       },
     );
     return reply.code(202).send({ approval });
+  },
+);
+
+function voiceDefaultNumber(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+app.post<{
+  Body: {
+    transcript: string;
+    accountSize?: number;
+    riskDollars?: number;
+    rrRatio?: number;
+  };
+}>(
+  '/v1/voice/draft-simulated-trade',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['transcript'],
+        properties: {
+          transcript: { type: 'string' },
+          accountSize: { type: 'number' },
+          riskDollars: { type: 'number' },
+          rrRatio: { type: 'number' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const transcript = req.body.transcript.trim();
+    if (!transcript) return reply.code(400).send({ error: 'transcript is required', code: 'EMPTY_TRANSCRIPT' });
+
+    try {
+      const submittedBy = await getUserId(req as Parameters<typeof getUserId>[0]);
+      const draft = parseVoiceTradeDraft(transcript, {
+        accountSize: req.body.accountSize ?? voiceDefaultNumber('VOICE_TRADE_DEFAULT_ACCOUNT_SIZE', 5000),
+        riskDollars: req.body.riskDollars ?? voiceDefaultNumber('VOICE_TRADE_DEFAULT_RISK_DOLLARS', 100),
+        rrRatio: req.body.rrRatio ?? voiceDefaultNumber('VOICE_TRADE_DEFAULT_RR', 2),
+      });
+      const alert = buildSimulatedAlertPlan({ ...draft.input, submittedBy: 'nova-voice' });
+      const plan = generateTradePlan(alert.planInput);
+
+      if (plan.blocked) {
+        return reply.code(422).send({
+          plan,
+          queued: false,
+          blockReasons: plan.blockReasons,
+          transcript: draft.transcript,
+          assumptions: draft.assumptions,
+          source: 'nova_voice',
+          executionMode: 'approval_only',
+        });
+      }
+
+      const approval = await requestApproval(
+        'sigma-risk',
+        'trade_plan',
+        `Nova voice: ${plan.side.toUpperCase()} ${plan.contracts}x ${plan.symbol} @ ${plan.entry}`,
+        {
+          plan,
+          taskId: randomUUID(),
+          submittedBy,
+          source: 'nova_voice',
+          rawAlert: {
+            transcript: draft.transcript,
+            parsed: alert.rawAlert,
+            assumptions: draft.assumptions,
+          },
+          executionMode: 'approval_only',
+        },
+      );
+
+      return reply.code(202).send({
+        queued: true,
+        approvalId: approval.id,
+        plan,
+        transcript: draft.transcript,
+        assumptions: draft.assumptions,
+        source: 'nova_voice',
+        executionMode: 'approval_only',
+      });
+    } catch (err) {
+      if (err instanceof VoiceTradeParseError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
+      if (err instanceof SimulatedAlertError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
+      if (err instanceof RiskError) {
+        return reply.code(400).send({ error: err.message, code: err.code });
+      }
+      throw err;
+    }
   },
 );
 

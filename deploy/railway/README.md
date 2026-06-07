@@ -234,9 +234,24 @@ It submits approval-only trade-plan drafts through:
 
 ```text
 POST /v1/trading/simulated-alert
+POST /v1/voice/draft-simulated-trade
 ```
 
 This route uses the same deterministic Sigma risk engine as the TradingView webhook, stores `source=simulated`, and never submits broker orders. It is the preferred workflow while no prop-firm account or sufficiently funded live account is connected.
+
+The Nova voice draft path accepts transcripts such as:
+
+```text
+Draft a simulated MNQ long at 19000 with a 10 point stop, risk 100 dollars, 2R.
+```
+
+If account size, risk dollars, or R:R are not spoken, the API uses safe defaults:
+
+```text
+VOICE_TRADE_DEFAULT_ACCOUNT_SIZE=5000
+VOICE_TRADE_DEFAULT_RISK_DOLLARS=100
+VOICE_TRADE_DEFAULT_RR=2
+```
 
 ## First Cloud Cutover Rule
 
