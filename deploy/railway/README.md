@@ -12,7 +12,7 @@ This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
 | `agent-worker` | `deploy/railway/agent-worker.Dockerfile` | Redis-backed task worker for Sigma Bot/Sigma Dev execution. Keeps agent work out of the API process for multi-replica readiness. |
 | `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
 | `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Seeded from live `/data/sigma.db`; backs the Sigma runtime store. |
-| `Redis` | Railway managed database | Online. Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, volume `redis-volume`. Not yet used by Sigma code. |
+| `Redis` | Railway managed database | Online. Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, volume `redis-volume`. Used by the Redis-backed agent task queue. |
 
 ## Railway Setup
 
