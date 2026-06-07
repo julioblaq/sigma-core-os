@@ -148,6 +148,7 @@ import {
   type NovaJournalInput,
   type NovaQueryInput,
 } from '../../core/nova/index.js';
+import { novaStatus } from '../../core/nova/contract.js';
 import {
   getHermesConfig,
   getHermesStatus,
@@ -690,7 +691,17 @@ app.post<{ Body: NovaJournalInput }>(
   async (req, reply) => {
     const writtenBy = await getUserId(req as Parameters<typeof getUserId>[0]);
     const entry = await createNovaJournalEntry(req.body, writtenBy);
-    return reply.code(201).send({ entry });
+    return reply.code(201).send({
+      entry,
+      statusModel: novaStatus({
+        mode: 'journal',
+        intentType: 'journal_capture',
+        riskState: 'read_only',
+        executionState: 'read_only',
+        confidence: 'high',
+        reason: 'Journal entry saved. Nova did not create or send an executable action.',
+      }),
+    });
   },
 );
 

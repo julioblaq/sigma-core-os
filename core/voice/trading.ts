@@ -1,5 +1,6 @@
 import type { SimulatedAlertInput } from '../webhooks/simulated.js';
 import type { TradePlanResult } from '../risk/index.js';
+import { novaStatus, type NovaStatusModel } from '../nova/contract.js';
 
 export interface VoiceTradeDefaults {
   accountSize?: number;
@@ -29,6 +30,7 @@ export interface VoiceTradeCoachCopy {
   answer: string;
   voiceText: string;
   highlights: VoiceTradeHighlight[];
+  statusModel: NovaStatusModel;
 }
 
 export class VoiceTradeParseError extends Error {
@@ -193,6 +195,16 @@ export function formatVoiceTradeCoachCopy(
   return {
     answer,
     voiceText,
+    statusModel: novaStatus({
+      mode: 'draft',
+      intentType: 'draft_trade',
+      riskState: queued ? 'approval_only' : 'blocked',
+      executionState: queued ? 'approval_required' : 'blocked',
+      confidence: plan.blocked ? 'high' : plan.warnings.length ? 'medium' : 'high',
+      reason: queued
+        ? 'Draft only. Waiting for approval; broker execution is disabled.'
+        : 'Draft blocked by the risk engine. No approval was queued.',
+    }),
     highlights: [
       {
         label: 'Draft',
