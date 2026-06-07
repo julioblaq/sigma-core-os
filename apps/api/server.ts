@@ -32,16 +32,33 @@
 // GET  /v1/journal/:id
 // POST /v1/journal/:id/close
 // GET  /v1/workspaces/:id/journal/summary
+// GET  /v1/voice/config
+// POST /v1/voice/transcribe
+// POST /v1/voice/speech
+// POST /v1/voice/draft-task
+// GET  /v1/hermes/config
+// GET  /v1/hermes/status
+// GET  /v1/hermes/models
+// POST /v1/hermes/draft-chat
+// POST /v1/hermes/dispatch-chat
 // GET  /health
 //
 // v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
 
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import { randomUUID } from 'crypto';
 import { route } from '../../core/router/index.js';
-import { listPending, getApproval, resolveApproval, listAll, requestApproval } from '../../core/policies/index.js';
-import { logOutcome, getLog, searchLog } from '../../core/runtime/index.js';
-import { memList } from '../../core/memory/index.js';
+import {
+  listPending,
+  getApproval,
+  resolveApproval,
+  listAll,
+  requestApproval,
+  logOutcome,
+  getLog,
+  searchLog,
+  memList,
+} from '../../core/store/control.js';
 import {
   calcPositionSize,
   calcTPSL,
@@ -103,6 +120,22 @@ import {
   type GitHubIssue,
   type GitHubPullRequest,
 } from '../../core/github/index.js';
+import {
+  getVoiceConfig,
+  transcribeAudio,
+  synthesizeSpeech,
+  VoiceConfigError,
+  VoiceProviderError,
+  type VoiceProvider,
+} from '../../core/voice/index.js';
+import {
+  getHermesConfig,
+  getHermesStatus,
+  listHermesModels,
+  sendHermesChat,
+  HermesConfigError,
+  HermesProviderError,
+} from '../../core/hermes/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -242,7 +275,7 @@ app.get('/v1/approvals', async () => listPending());
 app.get('/v1/approvals/history', async () => listAll());
 
 app.get<{ Params: { id: string } }>('/v1/approvals/:id', async (req, reply) => {
-  const approval = getApproval(req.params.id);
+  const approval = await getApproval(req.params.id);
   if (!approval) return reply.code(404).send({ error: 'not found' });
   return approval;
 });
@@ -274,9 +307,9 @@ app.post<{
     if (!approved && !reason) {
       return reply.code(400).send({ error: 'reason is required when denying an approval' });
     }
-    const updated = resolveApproval(req.params.id, approved, resolvedBy, reason);
+    const updated = await resolveApproval(req.params.id, approved, resolvedBy, reason);
     if (!updated) return reply.code(404).send({ error: 'approval not found or already resolved' });
-    const outcome = logOutcome(updated, updated.action);
+    const outcome = await logOutcome(updated, updated.action);
     return reply.code(200).send({ approval: updated, outcome });
   },
 );
@@ -313,8 +346,250 @@ app.get<{ Querystring: { namespace?: string } }>('/v1/memory', async (req) => {
   const ns = req.query.namespace;
   if (ns) return memList(ns);
   const namespaces = ['sigma-bot', 'sigma-dev', 'sigma-risk'];
-  return namespaces.flatMap(n => memList(n));
+  const entries = await Promise.all(namespaces.map(n => memList(n)));
+  return entries.flat();
 });
+
+// ---------------------------------------------------------------------------
+// Voice
+// ---------------------------------------------------------------------------
+
+function voiceError(reply: FastifyReply, err: unknown) {
+  if (err instanceof VoiceConfigError) {
+    return reply.code(400).send({ error: err.message, code: 'VOICE_CONFIG_ERROR' });
+  }
+  if (err instanceof VoiceProviderError) {
+    return reply.code(err.status >= 400 && err.status < 600 ? err.status : 502)
+      .send({ error: err.message, code: 'VOICE_PROVIDER_ERROR' });
+  }
+  throw err;
+}
+
+app.get<{ Querystring: { provider?: VoiceProvider } }>('/v1/voice/config', async (req, reply) => {
+  try {
+    return getVoiceConfig(req.query.provider);
+  } catch (err) {
+    return voiceError(reply, err);
+  }
+});
+
+app.post<{
+  Body: {
+    audioBase64: string;
+    mimeType?: string;
+    language?: string;
+    prompt?: string;
+    provider?: VoiceProvider;
+  };
+}>(
+  '/v1/voice/transcribe',
+  {
+    bodyLimit: 12 * 1024 * 1024,
+    schema: {
+      body: {
+        type: 'object',
+        required: ['audioBase64'],
+        properties: {
+          audioBase64: { type: 'string' },
+          mimeType: { type: 'string' },
+          language: { type: 'string' },
+          prompt: { type: 'string' },
+          provider: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const result = await transcribeAudio(req.body);
+      return reply.code(200).send(result);
+    } catch (err) {
+      return voiceError(reply, err);
+    }
+  },
+);
+
+app.post<{
+  Body: { text: string; voice?: string; format?: string; provider?: VoiceProvider };
+}>(
+  '/v1/voice/speech',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['text'],
+        properties: {
+          text: { type: 'string' },
+          voice: { type: 'string' },
+          format: { type: 'string' },
+          provider: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const result = await synthesizeSpeech(req.body);
+      return reply.code(200).send(result);
+    } catch (err) {
+      return voiceError(reply, err);
+    }
+  },
+);
+
+app.post<{
+  Body: { transcript: string; taskType?: string; notes?: string };
+}>(
+  '/v1/voice/draft-task',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['transcript'],
+        properties: {
+          transcript: { type: 'string' },
+          taskType: { type: 'string' },
+          notes: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const transcript = req.body.transcript.trim();
+    if (!transcript) return reply.code(400).send({ error: 'transcript is required' });
+
+    const submittedBy = getUserId(req as Parameters<typeof getUserId>[0]);
+    const approval = await requestApproval(
+      'sigma-voice',
+      'voice_task_draft',
+      `Voice task draft from ${submittedBy}`,
+      {
+        transcript,
+        taskType: req.body.taskType ?? 'voice_command',
+        notes: req.body.notes,
+        submittedBy,
+        createdAt: new Date().toISOString(),
+      },
+    );
+    return reply.code(202).send({ approval });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Hermes
+// ---------------------------------------------------------------------------
+
+function hermesError(reply: FastifyReply, err: unknown) {
+  if (err instanceof HermesConfigError) {
+    return reply.code(400).send({ error: err.message, code: 'HERMES_CONFIG_ERROR' });
+  }
+  if (err instanceof HermesProviderError) {
+    return reply.code(err.status >= 400 && err.status < 600 ? err.status : 502)
+      .send({ error: err.message, code: 'HERMES_PROVIDER_ERROR' });
+  }
+  throw err;
+}
+
+app.get('/v1/hermes/config', async (req, reply) => {
+  try {
+    return getHermesConfig();
+  } catch (err) {
+    return hermesError(reply, err);
+  }
+});
+
+app.get('/v1/hermes/status', async () => getHermesStatus());
+
+app.get('/v1/hermes/models', async (req, reply) => {
+  try {
+    return listHermesModels();
+  } catch (err) {
+    return hermesError(reply, err);
+  }
+});
+
+app.post<{
+  Body: {
+    prompt: string;
+    systemPrompt?: string;
+    sessionId?: string;
+    sessionKey?: string;
+    submittedBy?: string;
+  };
+}>(
+  '/v1/hermes/draft-chat',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['prompt'],
+        properties: {
+          prompt: { type: 'string' },
+          systemPrompt: { type: 'string' },
+          sessionId: { type: 'string' },
+          sessionKey: { type: 'string' },
+          submittedBy: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    const prompt = req.body.prompt.trim();
+    if (!prompt) return reply.code(400).send({ error: 'prompt is required' });
+
+    const submittedBy = req.body.submittedBy ?? getUserId(req as Parameters<typeof getUserId>[0]);
+    const approval = await requestApproval(
+      'sigma-hermes',
+      'hermes_chat',
+      `Hermes chat: ${prompt.slice(0, 96)}`,
+      {
+        prompt,
+        systemPrompt: req.body.systemPrompt,
+        sessionId: req.body.sessionId,
+        sessionKey: req.body.sessionKey,
+        submittedBy,
+        createdAt: new Date().toISOString(),
+      },
+    );
+    return reply.code(202).send({ approval });
+  },
+);
+
+app.post<{ Body: { approvalId: string } }>(
+  '/v1/hermes/dispatch-chat',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['approvalId'],
+        properties: { approvalId: { type: 'string' } },
+      },
+    },
+  },
+  async (req, reply) => {
+    const approval = await getApproval(req.body.approvalId);
+    if (!approval) return reply.code(404).send({ error: 'approval not found' });
+    if (approval.agent !== 'sigma-hermes' || approval.action !== 'hermes_chat') {
+      return reply.code(400).send({ error: 'approval is not a Hermes chat approval' });
+    }
+    if (approval.status !== 'approved') {
+      return reply.code(409).send({ error: `approval must be approved before dispatch; current status is ${approval.status}` });
+    }
+
+    const payload = approval.payload;
+    const prompt = typeof payload.prompt === 'string' ? payload.prompt : '';
+    const systemPrompt = typeof payload.systemPrompt === 'string' ? payload.systemPrompt : undefined;
+    const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : undefined;
+    const sessionKey = typeof payload.sessionKey === 'string' ? payload.sessionKey : undefined;
+
+    try {
+      const result = await sendHermesChat({ prompt, systemPrompt, sessionId, sessionKey });
+      return reply.code(200).send({ approvalId: approval.id, result });
+    } catch (err) {
+      return hermesError(reply, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // GitHub
@@ -476,7 +751,7 @@ app.post<{ Body: {
       if (plan.blocked) {
         return reply.code(422).send({ plan, queued: false, blockReasons: plan.blockReasons, strategyContext: strategyContext ?? null });
       }
-      const approval = requestApproval(
+      const approval = await requestApproval(
         'sigma-risk', 'trade_plan',
         `Risk plan: ${plan.side.toUpperCase()} ${plan.contracts}x ${plan.symbol} @ ${plan.entry}`,
         { plan, taskId: randomUUID(), submittedBy, strategyId: strategyId ?? null },

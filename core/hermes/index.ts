@@ -1,0 +1,247 @@
+// core/hermes/index.ts
+// Server-side adapter for the Railway-hosted Hermes API server.
+
+export interface HermesConfig {
+  baseUrl: string;
+  model: string;
+  timeoutMs: number;
+  apiKeySet: boolean;
+}
+
+export interface HermesStatus {
+  configured: boolean;
+  ok: boolean;
+  statusCode: number | null;
+  latencyMs: number;
+  platform?: string;
+  error?: string;
+}
+
+export interface HermesModel {
+  id: string;
+  object?: string;
+  ownedBy?: string;
+}
+
+export interface HermesChatRequest {
+  prompt: string;
+  systemPrompt?: string;
+  sessionId?: string;
+  sessionKey?: string;
+}
+
+export interface HermesChatResult {
+  content: string;
+  model: string;
+  sessionId?: string;
+  finishReason?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  latencyMs: number;
+}
+
+export class HermesConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'HermesConfigError';
+  }
+}
+
+export class HermesProviderError extends Error {
+  public readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'HermesProviderError';
+    this.status = status;
+  }
+}
+
+function readTimeoutMs(): number {
+  const parsed = Number(process.env.HERMES_TIMEOUT_MS ?? '30000');
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30000;
+}
+
+function readBaseUrl(): string {
+  return (process.env.HERMES_API_URL ?? '').replace(/\/$/, '');
+}
+
+function readApiKey(): string {
+  return process.env.HERMES_API_KEY ?? process.env.API_SERVER_KEY ?? '';
+}
+
+function buildConfig(): HermesConfig & { apiKey: string } {
+  const baseUrl = readBaseUrl();
+  const apiKey = readApiKey();
+  return {
+    baseUrl,
+    model: process.env.HERMES_MODEL ?? 'hermes-agent',
+    timeoutMs: readTimeoutMs(),
+    apiKeySet: apiKey.length > 0,
+    apiKey,
+  };
+}
+
+export function getHermesConfig(): HermesConfig {
+  const { apiKey: _apiKey, ...safe } = buildConfig();
+  return safe;
+}
+
+function requireBaseUrl(cfg: HermesConfig): void {
+  if (!cfg.baseUrl) throw new HermesConfigError('HERMES_API_URL is not configured');
+}
+
+function requireApiKey(cfg: HermesConfig & { apiKey: string }): void {
+  if (!cfg.apiKey) throw new HermesConfigError('HERMES_API_KEY is not configured');
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<{ response: Response; latencyMs: number }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startMs = Date.now();
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    return { response, latencyMs: Date.now() - startMs };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function getHermesStatus(): Promise<HermesStatus> {
+  const cfg = buildConfig();
+  if (!cfg.baseUrl) {
+    return { configured: false, ok: false, statusCode: null, latencyMs: 0, error: 'HERMES_API_URL is not configured' };
+  }
+
+  try {
+    const { response, latencyMs } = await fetchWithTimeout(
+      `${cfg.baseUrl}/health`,
+      { method: 'GET', headers: { Accept: 'application/json' } },
+      cfg.timeoutMs,
+    );
+    const payload = await response.json().catch(() => ({})) as { status?: unknown; platform?: unknown };
+    return {
+      configured: true,
+      ok: response.ok && payload.status === 'ok',
+      statusCode: response.status,
+      latencyMs,
+      platform: typeof payload.platform === 'string' ? payload.platform : undefined,
+      error: response.ok ? undefined : `Hermes health returned HTTP ${response.status}`,
+    };
+  } catch (err) {
+    return {
+      configured: true,
+      ok: false,
+      statusCode: null,
+      latencyMs: 0,
+      error: err instanceof Error ? err.message : 'Hermes health check failed',
+    };
+  }
+}
+
+export async function listHermesModels(): Promise<{ models: HermesModel[]; latencyMs: number }> {
+  const cfg = buildConfig();
+  requireBaseUrl(cfg);
+  requireApiKey(cfg);
+
+  const { response, latencyMs } = await fetchWithTimeout(
+    `${cfg.baseUrl}/v1/models`,
+    {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${cfg.apiKey}`,
+      },
+    },
+    cfg.timeoutMs,
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new HermesProviderError(`Hermes models failed: HTTP ${response.status} ${text}`, response.status);
+  }
+
+  const payload = await response.json() as { data?: Array<{ id?: unknown; object?: unknown; owned_by?: unknown }> };
+  const models = Array.isArray(payload.data)
+    ? payload.data
+        .filter(item => typeof item.id === 'string')
+        .map(item => ({
+          id: item.id as string,
+          object: typeof item.object === 'string' ? item.object : undefined,
+          ownedBy: typeof item.owned_by === 'string' ? item.owned_by : undefined,
+        }))
+    : [];
+
+  return { models, latencyMs };
+}
+
+export async function sendHermesChat(req: HermesChatRequest): Promise<HermesChatResult> {
+  const cfg = buildConfig();
+  requireBaseUrl(cfg);
+  requireApiKey(cfg);
+
+  const prompt = req.prompt.trim();
+  if (!prompt) throw new HermesConfigError('Hermes prompt is required');
+
+  const messages: Array<{ role: 'system' | 'user'; content: string }> = [];
+  const systemPrompt = req.systemPrompt?.trim();
+  if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
+  messages.push({ role: 'user', content: prompt });
+
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${cfg.apiKey}`,
+  };
+  if (req.sessionId?.trim()) headers['X-Hermes-Session-Id'] = req.sessionId.trim();
+  if (req.sessionKey?.trim()) headers['X-Hermes-Session-Key'] = req.sessionKey.trim();
+
+  const { response, latencyMs } = await fetchWithTimeout(
+    `${cfg.baseUrl}/v1/chat/completions`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: cfg.model,
+        stream: false,
+        messages,
+      }),
+    },
+    cfg.timeoutMs,
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new HermesProviderError(`Hermes chat failed: HTTP ${response.status} ${text}`, response.status);
+  }
+
+  const payload = await response.json() as {
+    model?: unknown;
+    choices?: Array<{ message?: { content?: unknown }; finish_reason?: unknown }>;
+    usage?: { prompt_tokens?: unknown; completion_tokens?: unknown; total_tokens?: unknown };
+  };
+  const first = payload.choices?.[0];
+  const content = typeof first?.message?.content === 'string' ? first.message.content : '';
+  if (!content.trim()) throw new HermesProviderError('Hermes chat response did not include content', 502);
+
+  const sessionId = response.headers.get('X-Hermes-Session-Id') ?? undefined;
+  const usage = payload.usage
+    ? {
+        promptTokens: typeof payload.usage.prompt_tokens === 'number' ? payload.usage.prompt_tokens : 0,
+        completionTokens: typeof payload.usage.completion_tokens === 'number' ? payload.usage.completion_tokens : 0,
+        totalTokens: typeof payload.usage.total_tokens === 'number' ? payload.usage.total_tokens : 0,
+      }
+    : undefined;
+
+  return {
+    content: content.trim(),
+    model: typeof payload.model === 'string' ? payload.model : cfg.model,
+    sessionId,
+    finishReason: typeof first?.finish_reason === 'string' ? first.finish_reason : undefined,
+    usage,
+    latencyMs,
+  };
+}

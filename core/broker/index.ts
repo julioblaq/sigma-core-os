@@ -88,7 +88,7 @@ export interface BrokerStatus {
   ready: true;
 }
 
-export interface OrderValidationError {
+export interface OrderValidationIssue {
   field: string;
   reason: string;
 }

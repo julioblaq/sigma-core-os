@@ -1,0 +1,14 @@
+.git
+.env
+.env.*
+!.env.example
+node_modules
+apps/dashboard/node_modules
+apps/dashboard/.next
+.sigma-sandbox
+sigma.db
+*.db
+*.db-lock
+*.db.lock
+*.log
+docs/knowledge

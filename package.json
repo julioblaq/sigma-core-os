@@ -5,17 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch apps/api/server.ts",
+    "start:api": "tsx apps/api/server.ts",
     "start": "tsx apps/api/server.ts",
     "dashboard": "cd apps/dashboard && npm run dev",
-    "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts tests/llm.test.ts tests/sigma-dev.test.ts tests/sandbox.test.ts tests/broker.test.ts tests/risk.test.ts tests/operators.test.ts tests/strategies.test.ts tests/journal.test.ts tests/audit-search.test.ts tests/auth.test.ts tests/performance.test.ts tests/github.test.ts",
+    "test": "node --import tsx/esm --test --test-concurrency=1 tests/approval-spine.test.ts tests/memory.test.ts tests/llm.test.ts tests/voice.test.ts tests/hermes.test.ts tests/sigma-dev.test.ts tests/sandbox.test.ts tests/broker.test.ts tests/risk.test.ts tests/operators.test.ts tests/strategies.test.ts tests/journal.test.ts tests/audit-search.test.ts tests/auth.test.ts tests/performance.test.ts tests/github.test.ts",
+    "test:isolated": "DB_PATH=${DB_PATH:-/tmp/sigma-core-os-test.db} npm test",
+    "db:migrate:postgres": "tsx scripts/migrate-sqlite-to-postgres.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "fastify": "^4.26.2",
-    "node-sqlite3-wasm": "^0.8.35"
+    "node-sqlite3-wasm": "^0.8.35",
+    "pg": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.7.1",
     "typescript": "^5.4.2"
   }

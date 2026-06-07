@@ -1,0 +1,159 @@
+# Railway Deployment Assets
+
+Date: 2026-06-06
+
+This directory contains Dockerfiles for the cloud-safe Sigma Core OS services.
+
+## Services
+
+| Railway service | Dockerfile path | Notes |
+|---|---|---|
+| `sigma-api` | `deploy/railway/sigma-api.Dockerfile` | Fastify API, in-process Sigma Bot/Sigma Dev handlers. Uses `/data/sigma.db` by default; approvals, memory, and outcome logs can use Railway Postgres with `SIGMA_CONTROL_STORE=postgres`. |
+| `sigma-dashboard` | `deploy/railway/sigma-dashboard.Dockerfile` | Next.js dashboard. Set `NEXT_PUBLIC_API_URL` to the Railway URL for `sigma-api`. Includes `/voice` and `/hermes` operator pages. |
+| `Postgres` | Railway managed database | Online. Service ID `f80547fb-42aa-42c7-afa7-018044531379`, volume `postgres-volume`. Seeded from live `/data/sigma.db`; available for the Sigma control store. |
+| `Redis` | Railway managed database | Online. Service ID `4107f338-a335-4547-a8d3-22e5e0c67669`, volume `redis-volume`. Not yet used by Sigma code. |
+
+## Railway Setup
+
+Create separate Railway services from the same GitHub repository.
+
+For each service, keep the repository root as the build context and set:
+
+```text
+RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-api.Dockerfile
+```
+
+or:
+
+```text
+RAILWAY_DOCKERFILE_PATH=deploy/railway/sigma-dashboard.Dockerfile
+```
+
+For Dockerfile deployments, Railway variables used by Next.js during `next build` must be declared as Docker build args. The dashboard Dockerfile declares `ARG NEXT_PUBLIC_API_URL` so the `/api/*` rewrite is built against the Railway API URL instead of the local fallback.
+
+## `sigma-api` Variables
+
+Required or recommended:
+
+```text
+PORT=3001
+DB_PATH=/data/sigma.db
+SIGMA_SANDBOX_PATH=/data/sandbox
+DASHBOARD_ORIGIN=https://sigma-dashboard-production-a7a7.up.railway.app
+LLM_MODELS=gpt-4o
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=<set in Railway>
+LLM_TIMEOUT_MS=30000
+VOICE_PROVIDER=openrouter
+OPENROUTER_API_KEY=<set in Railway>
+VOICE_STT_MODEL=microsoft/mai-transcribe-1.5
+VOICE_TTS_MODEL=microsoft/mai-voice-2
+VOICE_TTS_VOICE=en-US-Harper:MAI-Voice-2
+VOICE_TTS_FORMAT=mp3
+VOICE_TIMEOUT_MS=30000
+HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
+HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
+HERMES_MODEL=hermes-agent
+HERMES_TIMEOUT_MS=30000
+```
+
+The persistent SQLite path is `/data/sigma.db` with `SIGMA_SANDBOX_PATH=/data/sandbox`, backed by a Railway volume mounted at `/data`. The API image starts with `deploy/railway/sigma-api-entrypoint.sh`, prepares the mounted paths, and then uses `gosu` to drop execution to the `node` user before launching the API.
+
+Keep `sigma-api` at one replica while SQLite is the production store. Move to PostgreSQL before multi-replica traffic.
+
+Railway managed `Postgres` and `Redis` are provisioned and online. `Redis` is not wired yet. `Postgres` can now back the Sigma control store:
+
+```text
+SIGMA_CONTROL_STORE=postgres
+DATABASE_URL=<Railway Postgres private/internal URL>
+```
+
+The control store currently covers:
+
+- approvals
+- outcome log
+- memory entries
+
+Workspace, auth, strategy, journal, paper-order, and sandbox-write tables still use the existing SQLite modules until their repositories are converted.
+
+## SQLite To Postgres Migration
+
+The repository includes a first-pass migration command:
+
+```text
+npm run db:migrate:postgres -- --dry-run
+```
+
+That command reads the source SQLite database and prints row counts without connecting to Postgres.
+
+To copy rows into Railway Postgres, set a Postgres URL in the shell without committing it:
+
+```text
+SQLITE_PATH=/path/to/sigma.db \
+POSTGRES_MIGRATION_URL=<railway-postgres-url> \
+npm run db:migrate:postgres
+```
+
+The script creates the Postgres schema, upserts rows from all current Sigma tables, and verifies row counts. Use `--truncate` only when intentionally replacing all destination table rows.
+
+This migration command prepares the data layer. It does not switch `sigma-api` by itself. After migration verification, set `SIGMA_CONTROL_STORE=postgres` and `DATABASE_URL` in Railway to move approvals, memory, and outcome logs to Postgres.
+
+Production migration status on 2026-06-06: the command was run from the Railway `sigma-api` console against `/data/sigma.db` and managed Railway `Postgres`. Verification passed with all tables `ok`; live rows copied were `approvals=1` and `outcome_log=1`.
+
+## `sigma-dashboard` Variables
+
+Required:
+
+```text
+PORT=3000
+NEXT_PUBLIC_API_URL=https://sigma-api-production-b005.up.railway.app
+```
+
+## Live Railway URLs
+
+```text
+sigma-api: https://sigma-api-production-b005.up.railway.app
+sigma-dashboard: https://sigma-dashboard-production-a7a7.up.railway.app
+hermes-agent: https://hermes-agent-production-62ee.up.railway.app
+```
+
+## Hermes Approval Flow
+
+`sigma-api` connects to the secured Railway `hermes-agent` service through server-side variables only. The dashboard never receives `HERMES_API_KEY`.
+
+Approved cloud action surface:
+
+```text
+GET  /v1/hermes/config
+GET  /v1/hermes/status
+GET  /v1/hermes/models
+POST /v1/hermes/draft-chat
+POST /v1/hermes/dispatch-chat
+```
+
+Dashboard surface:
+
+```text
+/hermes
+```
+
+`POST /v1/hermes/draft-chat` creates a `sigma-hermes` approval with action `hermes_chat`. `POST /v1/hermes/dispatch-chat` sends the prompt to Hermes only after that approval has status `approved`.
+
+This is intentionally limited to non-streaming `/v1/chat/completions`. Do not expose the broader Hermes run/tool execution surface until tool permissions, audit logging, idempotency, and rollback handling are reviewed.
+
+## First Cloud Cutover Rule
+
+Only move cloud-safe services first:
+
+- Sigma Core API
+- Sigma Dashboard
+- In-process Sigma Bot and Sigma Dev handlers
+- Paper broker adapter
+
+Keep these local:
+
+- Moomoo OpenD
+- Broker desktop software
+- MFA-protected gateways
+- GUI trading platforms
+- Hermes trading profile

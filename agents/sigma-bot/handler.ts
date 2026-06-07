@@ -5,8 +5,8 @@
 // Trading calculations are deterministic - never delegated to LLM.
 // NEVER executes a trade - that requires an approved Approval record.
 
-import { requestApproval, Approval } from '../../core/policies/index.js';
-import { memSet } from '../../core/memory/index.js';
+import type { Approval } from '../../core/policies/index.js';
+import { requestApproval, memSet } from '../../core/store/control.js';
 import { generateResponse } from '../../core/llm/index.js';
 import type { Task } from '../../core/router/index.js';
 
@@ -84,12 +84,12 @@ export async function handleTask(task: Task): Promise<SigmaBotResult> {
   // -------------------------------------------------------------------------
   // Persist signal in memory
   // -------------------------------------------------------------------------
-  memSet('sigma-bot', `signal:${task.id}`, fullSignal, 'sigma-bot');
+  await memSet('sigma-bot', `signal:${task.id}`, fullSignal, 'sigma-bot');
 
   // -------------------------------------------------------------------------
   // Queue for human approval
   // -------------------------------------------------------------------------
-  const approval: Approval = requestApproval(
+  const approval: Approval = await requestApproval(
     'sigma-bot',
     'trade_plan',
     `Trade plan: ${direction.toUpperCase()} ${quantity}x ${symbol}`,

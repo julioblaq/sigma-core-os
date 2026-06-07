@@ -31,6 +31,17 @@ export default function ArtifactModal({ approval, onClose }: { approval: Approva
   }, [onClose]);
 
   const artifact = approval.payload?.artifact as Record<string, unknown> | undefined;
+  const artifactFilePath = typeof artifact?.filePath === 'string' ? artifact.filePath : undefined;
+  const artifactLanguage = typeof artifact?.language === 'string' ? artifact.language : undefined;
+  const artifactAction = typeof artifact?.action === 'string' ? artifact.action : '-';
+  const artifactRequiresWrite = artifact?.requiresWrite === true;
+  const artifactGeneratedAt = typeof artifact?.generatedAt === 'string' ? artifact.generatedAt : undefined;
+  const artifactContent =
+    typeof artifact?.content === 'string'
+      ? artifact.content
+      : artifact?.content === undefined
+        ? undefined
+        : JSON.stringify(artifact.content, null, 2);
 
   return (
     <div
@@ -67,23 +78,23 @@ export default function ArtifactModal({ approval, onClose }: { approval: Approva
         {artifact && (
           <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--subtext)' }}>Artifact</div>
-            <Row label="Action"    value={<span className="mono">{String(artifact.action ?? '-')}</span>} />
-            {Boolean(artifact.filePath) && <Row label="File Path" value={<span className="mono" style={{ color: 'var(--accent)' }}>{String(artifact.filePath)}</span>} />}
-            {Boolean(artifact.language) && <Row label="Language"  value={<span className="mono">{String(artifact.language)}</span>} />}
-            <Row label="Requires Write" value={<span className="mono">{artifact.requiresWrite ? 'yes' : 'no'}</span>} />
-            <Row label="Generated" value={<span className="mono">{artifact.generatedAt ? new Date(String(artifact.generatedAt)).toLocaleString() : '-'}</span>} />
+            <Row label="Action"    value={<span className="mono">{artifactAction}</span>} />
+            {artifactFilePath && <Row label="File Path" value={<span className="mono" style={{ color: 'var(--accent)' }}>{artifactFilePath}</span>} />}
+            {artifactLanguage && <Row label="Language"  value={<span className="mono">{artifactLanguage}</span>} />}
+            <Row label="Requires Write" value={<span className="mono">{artifactRequiresWrite ? 'yes' : 'no'}</span>} />
+            <Row label="Generated" value={<span className="mono">{artifactGeneratedAt ? new Date(artifactGeneratedAt).toLocaleString() : '-'}</span>} />
           </div>
         )}
 
         {/* Generated content */}
-        {artifact && Boolean(artifact.content) && (
+        {artifactContent && (
           <div className="px-6 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
             <div className="text-xs font-medium uppercase tracking-wider mb-3" style={{ color: 'var(--subtext)' }}>
               Generated Content
             </div>
             <pre className="mono text-xs p-4 rounded overflow-auto"
               style={{ background: 'var(--bg)', color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320 }}>
-              {String(artifact.content)}
+              {artifactContent}
             </pre>
           </div>
         )}
