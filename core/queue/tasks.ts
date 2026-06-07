@@ -12,6 +12,11 @@ export interface QueuedTaskResult {
 
 export type TaskDispatchResult = RouterResult | QueuedTaskResult;
 
+interface StoredTaskResult extends RouterResult {
+  completedAt?: string;
+  failedAt?: string;
+}
+
 interface QueueRedis {
   command(...parts: (string | number)[]): Promise<unknown>;
   close(): void;
@@ -62,9 +67,27 @@ export async function recordTaskResult(redis: QueueRedis, result: RouterResult):
 
 export async function recordTaskFailure(redis: QueueRedis, task: Task, err: unknown): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
+  const failedAt = new Date().toISOString();
+  await redis.command('SET', taskResultKey(task.id), JSON.stringify({
+    taskId: task.id,
+    agent: 'agent-worker',
+    status: 'error',
+    error: message,
+    failedAt,
+  }), 'EX', Number(process.env.TASK_RESULT_TTL_SECONDS ?? 86400));
   await redis.command('LPUSH', `${taskQueueName()}:dead`, JSON.stringify({
     task,
     error: message,
-    failedAt: new Date().toISOString(),
+    failedAt,
   }));
+}
+
+export async function getTaskResult(taskId: string, redis: QueueRedis = new RedisConnection({ url: redisUrl() })): Promise<StoredTaskResult | null> {
+  try {
+    const raw = await redis.command('GET', taskResultKey(taskId));
+    if (typeof raw !== 'string') return null;
+    return JSON.parse(raw) as StoredTaskResult;
+  } finally {
+    redis.close();
+  }
 }
