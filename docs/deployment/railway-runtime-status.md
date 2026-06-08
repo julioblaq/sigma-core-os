@@ -51,9 +51,19 @@ Status: Cloud migration baseline is live.
 | Service | Host | Reason |
 |---|---|---|
 | Hermes trading profile | Local Mac | May depend on broker sessions, MFA, GUI state, OpenD, or private LAN access. |
-| Moomoo OpenD | M1 trading host | Must never be publicly exposed. |
+| Moomoo OpenD | M1 trading host | Local broker/session gateway only. Must never be publicly exposed. Do not depend on it for US CME futures market data because regional CME entitlement is a known MooMoo licensing wall. |
 | Desktop broker software | M1 trading host | GUI/MFA/session-bound. |
 | Local auth/session tools | M1 trading host | Local-only trust boundary. |
+
+## Market Data Decision
+
+Use Massive.com as the cloud-safe futures market data source after the 24 hour Railway stability watch. The target endpoint is the Massive futures aggregates path for CME OHLC data:
+
+```text
+/futures/v1/aggs/{ticker}
+```
+
+Moomoo/OpenD remains local on the M1 for broker connectivity, local sessions, and trading-gateway behavior. It should not be used as the required CME futures data dependency for Sigma/Nova cloud features.
 
 ## Verified On 2026-06-07
 

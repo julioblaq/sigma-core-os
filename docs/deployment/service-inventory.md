@@ -51,6 +51,7 @@ Environment: production
 | SQLite database file | Local fallback | `DB_PATH=./sigma.db` locally, optional explicit rollback variable only | `core/db.ts`, `.env.example` | No longer required by the Railway production image or Postgres runtime path. The SQLite-backed modules are lazy-loaded only when `SIGMA_CONTROL_STORE` is left at the local/default SQLite mode. |
 | Memory store | Cloud Safe | Postgres in production, SQLite fallback locally | `core/memory/index.ts`, `core/store/control.ts` | Sigma Bot and Sigma Dev memory entries are covered by the Postgres runtime store when `SIGMA_CONTROL_STORE=postgres`. Redis task queue integration is separate from long-term memory. |
 | Approval queue and audit log | Cloud Safe | Postgres in production, SQLite fallback locally | `core/policies/index.ts`, `core/runtime/index.ts`, `core/store/control.ts` | Approvals, Hermes dispatch lookups, voice/risk approvals, and outcome logs are covered by the Postgres runtime store when `SIGMA_CONTROL_STORE=postgres`. |
+| Massive futures market data | Cloud Safe | Hosted API | Future `MARKET_DATA_PROVIDER=massive` adapter | Preferred source for CME futures OHLC data after the 24 hour Railway stability watch. Use `/futures/v1/aggs/{ticker}` and store `MASSIVE_API_KEY` only in Railway variables. This avoids depending on MooMoo CME entitlements for cloud Sigma/Nova features. |
 | Paper broker adapter | Cloud Safe | Imported by runtime | `core/broker/index.ts` | Paper-only, no live broker credentials, and live mode is structurally rejected. Safe to run in cloud because it does not connect to Tradovate, Moomoo, IBKR, Alpaca, or OpenD. |
 | Sandbox writer | Unknown | Imported by runtime | `core/sandbox/index.ts` | Safe design, but storage target matters. Railway deployments should set `SIGMA_SANDBOX_PATH` explicitly and decide whether sandbox artifacts are temporary or volume-backed. |
 | Python Sigma Bot stub | Unknown | `python agents/sigma-bot/agent.py` | `agents/sigma-bot/agent.py` | Not wired into `package.json` or API router. File appears to be an old stub and should not be deployed until syntax/runtime health is verified. |
@@ -86,6 +87,8 @@ These should not be publicly exposed or moved to Railway in the first migration:
 - Trading platforms requiring a local session
 - Hermes trading profile until its broker/hardware dependencies are proven cloud safe
 - Local Ollama endpoints such as `http://localhost:11434/v1`
+
+Moomoo/OpenD remains useful as the local M1 broker/session gateway, but it is not the target CME futures data source for cloud Sigma/Nova. Futures market data should route through Massive.com once the data adapter is added.
 
 ## Unknown Services And Integrations
 

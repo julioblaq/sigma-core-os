@@ -67,6 +67,9 @@ HERMES_API_URL=https://hermes-agent-production-62ee.up.railway.app
 HERMES_API_KEY=<set in Railway from hermes-agent API_SERVER_KEY>
 HERMES_MODEL=hermes-agent
 HERMES_TIMEOUT_MS=30000
+MARKET_DATA_PROVIDER=massive
+MASSIVE_API_KEY=<set in Railway>
+MASSIVE_BASE_URL=https://api.massive.com
 TRADINGVIEW_WEBHOOK_SECRET=<set in Railway>
 TRADINGVIEW_DEFAULT_ACCOUNT_SIZE=5000
 TRADINGVIEW_DEFAULT_RISK_DOLLARS=100
@@ -282,3 +285,5 @@ Keep these local:
 - MFA-protected gateways
 - GUI trading platforms
 - Hermes trading profile
+
+Use Massive.com for cloud-safe CME futures OHLC data after the 24 hour stability watch. MooMoo/OpenD stays local as the broker/session gateway and should not be treated as the required CME data source in US production because of regional entitlement limits.
