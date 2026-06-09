@@ -1,0 +1,57 @@
+{
+  "id": "strategy:blaq-orb-mtf",
+  "title": "Blaq ORB MTF Strategy",
+  "type": "sigma-bot-training-strategy",
+  "source": "user-provided strategy note blaq_orb_mtf.md",
+  "status": "research",
+  "summary": "Opening Range Breakout strategy for ES/NQ futures that filters entries through Day, 4H, 1H, and 30M 200 EMA continuity, relative volume, and optional support/resistance context. Default risk uses ORB midpoint stop, 2R target, hybrid trailing exits, max daily loss, and max trades per day.",
+  "timeframes": {
+    "entryChart": "5 minute",
+    "openingRange": "09:30-09:45 ET default",
+    "trendFilters": "Day, 4H, 1H, 30M"
+  },
+  "instruments": [
+    "ES",
+    "NQ",
+    "MES",
+    "MNQ"
+  ],
+  "requiredConditions": [
+    "Opening range is finalized",
+    "MTF 200 EMA continuity aligns with trade direction when enabled",
+    "EMA slope aligns with trade direction when enabled",
+    "Relative volume exceeds SMA(20) times configured multiplier when enabled",
+    "Entry trigger mode fires from ORB breakout, 200 EMA cross, continuation, or combined mode",
+    "Risk plan satisfies midpoint stop, daily loss, max trades, and position-size rules",
+    "Sigma approval gate accepts the plan before any execution path"
+  ],
+  "riskDefaults": {
+    "stopMode": "ORB midpoint",
+    "targetRR": 2,
+    "maxDailyLossDollars": 500,
+    "maxTradesPerDay": 3,
+    "quantity": 2,
+    "commissionPerContract": 0.55,
+    "slippageTicks": 1
+  },
+  "validation": {
+    "dataSource": "Massive futures OHLC",
+    "status": "Backtests still under review; do not promote to live until out-of-sample validation is positive.",
+    "knownConcerns": [
+      "ORB midpoint stop may be too tight on noisy opens",
+      "MTF filters can reduce trade count and overfit to trend regimes",
+      "Relative volume threshold needs instrument-specific validation",
+      "Reported positive NQ snapshot is not enough for production approval"
+    ]
+  },
+  "journalTags": [
+    "model:blaq-orb-mtf",
+    "orb:breakout",
+    "filter:mtf-continuity",
+    "filter:200-ema",
+    "filter:relative-volume",
+    "exit:hybrid-trailing",
+    "risk:orb-midpoint-stop",
+    "status:research"
+  ]
+}
