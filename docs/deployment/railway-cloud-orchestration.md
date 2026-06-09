@@ -288,6 +288,7 @@ After deploying `sigma-api`:
 
 ```text
 GET /health
+GET /v1/llm/config
 ```
 
 Expected response:
@@ -298,6 +299,8 @@ Expected response:
   "service": "sigma-core-os"
 }
 ```
+
+`/v1/llm/config` should show `deepseek-v4-flash` as the primary model, both DeepSeek models routed to `https://api.deepseek.com`, and `minimax/minimax-m3` routed to `https://openrouter.ai/api/v1`. It should expose `apiKeySet: true` only, never raw API key values.
 
 Observed live response on 2026-06-06:
 

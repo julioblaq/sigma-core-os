@@ -42,6 +42,7 @@ function assertCondition(condition, message, detail = {}) {
 function redact(value) {
   if (!value || typeof value !== 'object') return value;
   return JSON.parse(JSON.stringify(value, (key, innerValue) => {
+    if (key === 'apiKeySet') return innerValue;
     if (/key|token|secret|password|authorization/i.test(key)) return '[redacted]';
     return innerValue;
   }));
@@ -130,6 +131,32 @@ async function checkTradingSafety() {
     tradingMode: body.tradingMode,
     executionMode: body.executionMode,
     brokerExecution: body.brokerExecution,
+  };
+}
+
+async function checkLLMConfig() {
+  const { response, body } = await request(`${config.apiUrl}/v1/llm/config`);
+  assertCondition(response.ok, `LLM config returned HTTP ${response.status}`, body);
+
+  const chain = body?.config?.chain;
+  assertCondition(Array.isArray(chain), 'LLM config did not return a chain', body);
+  assertCondition(body?.config?.primaryModel === 'deepseek-v4-flash', 'LLM primary model is not DeepSeek flash', body);
+  assertCondition(chain[0]?.baseUrl === 'https://api.deepseek.com', 'LLM primary is not routed to DeepSeek direct', body);
+  assertCondition(chain[1]?.baseUrl === 'https://api.deepseek.com', 'LLM secondary is not routed to DeepSeek direct', body);
+  assertCondition(chain[2]?.baseUrl === 'https://openrouter.ai/api/v1', 'LLM fallback is not routed to OpenRouter', body);
+  assertCondition(chain.every(provider => provider.apiKeySet === true), 'LLM chain has an unset API key', body);
+
+  const serialized = JSON.stringify(body);
+  assertCondition(!/"apiKey"\s*:/.test(serialized), 'LLM config exposed an API key field', body);
+
+  return {
+    http: response.status,
+    primaryModel: body.config.primaryModel,
+    chain: chain.map(provider => ({
+      id: provider.id,
+      baseUrl: provider.baseUrl,
+      apiKeySet: provider.apiKeySet,
+    })),
   };
 }
 
@@ -226,6 +253,7 @@ await runCheck('sigma-api health', checkApiHealth);
 await runCheck('sigma-dashboard trading page', checkDashboardTrading);
 await runCheck('hermes-agent health', checkHermesHealth);
 await runCheck('trading safety config', checkTradingSafety);
+await runCheck('LLM config', checkLLMConfig);
 await runCheck('Nova query contract', checkNovaQueryContract);
 
 if (config.includeWriteSmoke) {
