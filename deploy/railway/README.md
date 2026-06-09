@@ -169,6 +169,8 @@ Approved cloud action surface:
 
 ```text
 GET  /v1/llm/config
+GET  /v1/market-data/config
+GET  /v1/market-data/futures/aggs?ticker=ESU6&resolution=5min&windowStartGte=2026-09-01&windowStartLte=2026-09-02
 GET  /v1/hermes/config
 GET  /v1/hermes/status
 GET  /v1/hermes/models
@@ -177,6 +179,8 @@ POST /v1/hermes/dispatch-chat
 ```
 
 `/v1/llm/config` exposes the active model chain, base URLs, runtime health, and `apiKeySet` booleans only. It must never return raw API key values.
+
+`/v1/market-data/config` exposes provider, base URL, timeout, and `apiKeySet` only. Futures aggregate requests call Massive.com server-side using `MASSIVE_API_KEY`; the dashboard and clients never receive the raw key.
 
 Dashboard surface:
 
@@ -289,3 +293,23 @@ Keep these local:
 - Hermes trading profile
 
 Use Massive.com for cloud-safe CME futures OHLC data after the 24 hour stability watch. MooMoo/OpenD stays local as the broker/session gateway and should not be treated as the required CME data source in US production because of regional entitlement limits.
+
+Supported first adapter:
+
+```text
+GET /v1/market-data/futures/aggs
+```
+
+Query parameters:
+
+```text
+ticker=ESU6
+resolution=1min | 5min | 1hour | 1session
+windowStart=YYYY-MM-DD
+windowStartGte=YYYY-MM-DD
+windowStartGt=<nanosecond timestamp or date>
+windowStartLte=YYYY-MM-DD
+windowStartLt=<nanosecond timestamp or date>
+limit=1..50000
+sort=window_start.asc | window_start.desc
+```
