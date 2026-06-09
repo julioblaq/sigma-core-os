@@ -44,6 +44,7 @@
 // POST /v1/voice/draft-simulated-trade
 // POST /v1/nova/query
 // POST /v1/nova/journal
+// GET  /v1/llm/config
 // GET  /v1/hermes/config
 // GET  /v1/hermes/status
 // GET  /v1/hermes/models
@@ -149,6 +150,10 @@ import {
   type NovaQueryInput,
 } from '../../core/nova/index.js';
 import { novaStatus } from '../../core/nova/contract.js';
+import {
+  getLLMConfig,
+  getLLMHealth,
+} from '../../core/llm/index.js';
 import {
   getHermesConfig,
   getHermesStatus,
@@ -704,6 +709,15 @@ app.post<{ Body: NovaJournalInput }>(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// LLM
+// ---------------------------------------------------------------------------
+
+app.get('/v1/llm/config', async () => ({
+  config: getLLMConfig(),
+  health: getLLMHealth(),
+}));
 
 // ---------------------------------------------------------------------------
 // Hermes

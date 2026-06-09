@@ -168,12 +168,15 @@ hermes-agent: https://hermes-agent-production-62ee.up.railway.app
 Approved cloud action surface:
 
 ```text
+GET  /v1/llm/config
 GET  /v1/hermes/config
 GET  /v1/hermes/status
 GET  /v1/hermes/models
 POST /v1/hermes/draft-chat
 POST /v1/hermes/dispatch-chat
 ```
+
+`/v1/llm/config` exposes the active model chain, base URLs, runtime health, and `apiKeySet` booleans only. It must never return raw API key values.
 
 Dashboard surface:
 
