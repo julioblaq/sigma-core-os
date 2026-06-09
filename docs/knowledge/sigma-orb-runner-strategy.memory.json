@@ -1,0 +1,56 @@
+{
+  "id": "strategy:sigma-orb-runner",
+  "title": "Sigma ORB Runner Strategy",
+  "type": "sigma-bot-training-strategy",
+  "source": "user-provided strategy note sigma_orb_runner.md",
+  "status": "research",
+  "summary": "A simpler 15 minute Opening Range Breakout model for ES/NQ futures. It trades the first close outside the ORB, uses breakout candle midpoint entry, adaptive ORB-range stop distance, 2R target, day-of-week and contract-month filters, and emits webhook payloads that should be routed through Sigma approval-only middleware.",
+  "timeframes": {
+    "entryChart": "5 minute recommended",
+    "openingRange": "09:30-09:45 ET"
+  },
+  "instruments": [
+    "ES",
+    "NQ",
+    "MES",
+    "MNQ"
+  ],
+  "requiredConditions": [
+    "Opening range is finalized",
+    "Current day passes allowed-days filter",
+    "Current contract month is not banned",
+    "First close outside ORB high or ORB low occurs",
+    "Entry is calculated from breakout candle midpoint",
+    "Adaptive stop distance is calculated from current and historical ORB ranges",
+    "Target is calculated from configured reward:risk",
+    "Sigma approval gate accepts the plan before any execution path"
+  ],
+  "riskDefaults": {
+    "orbDurationMinutes": 15,
+    "targetRR": 2,
+    "adaptiveLookbackDays": 30,
+    "rangeMultiplier": 1.5,
+    "allowedDays": "Wed,Fri",
+    "skipMonths": "F,G,H"
+  },
+  "validation": {
+    "dataSource": "Massive futures OHLC",
+    "status": "Backtests are still under review; user reports some variants are negative.",
+    "knownConcerns": [
+      "Allowed-day and skipped-month filters may be overfit",
+      "Midpoint entry may not be fill-realistic from TradingView alerts",
+      "Adaptive range rule must be tested across more regimes",
+      "Ghost/Tradovate route must be replaced with Sigma approval-only route before production"
+    ]
+  },
+  "journalTags": [
+    "model:sigma-orb-runner",
+    "orb:15m",
+    "entry:breakout-candle-midpoint",
+    "risk:adaptive-orb-range",
+    "filter:day-of-week",
+    "filter:contract-month",
+    "route:tradingview-sigma-approval",
+    "status:research"
+  ]
+}
