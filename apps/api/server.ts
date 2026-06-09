@@ -50,6 +50,8 @@
 // GET  /v1/hermes/models
 // POST /v1/hermes/draft-chat
 // POST /v1/hermes/dispatch-chat
+// GET  /v1/market-data/config
+// GET  /v1/market-data/futures/aggs
 // GET  /health
 //
 // v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
@@ -171,12 +173,30 @@ import {
   SimulatedAlertError,
   type SimulatedAlertInput,
 } from '../../core/webhooks/simulated.js';
+import {
+  getMarketDataConfig,
+  listFuturesAggs,
+  MarketDataConfigError,
+  MarketDataProviderError,
+} from '../../core/market-data/index.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
 const SESSION_COOKIE = 'sigma_session';
 // 24h in seconds for Set-Cookie max-age
 const SESSION_MAX_AGE = 24 * 60 * 60;
+
+type FuturesAggsQuery = {
+  ticker: string;
+  resolution?: string;
+  windowStart?: string;
+  windowStartGte?: string;
+  windowStartGt?: string;
+  windowStartLte?: string;
+  windowStartLt?: string;
+  limit?: string;
+  sort?: string;
+};
 
 app.addHook('onRequest', async (req, reply) => {
   reply.header('Access-Control-Allow-Origin', process.env.DASHBOARD_ORIGIN ?? 'http://localhost:3000');
@@ -831,6 +851,55 @@ app.post<{ Body: { approvalId: string } }>(
       return reply.code(200).send({ approvalId: approval.id, result });
     } catch (err) {
       return hermesError(reply, err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Market data
+// ---------------------------------------------------------------------------
+
+function marketDataError(reply: FastifyReply, err: unknown) {
+  if (err instanceof MarketDataConfigError) {
+    return reply.code(400).send({ error: err.message, code: 'MARKET_DATA_CONFIG_ERROR' });
+  }
+  if (err instanceof MarketDataProviderError) {
+    return reply.code(err.status >= 400 && err.status < 600 ? err.status : 502)
+      .send({ error: err.message, code: 'MARKET_DATA_PROVIDER_ERROR' });
+  }
+  throw err;
+}
+
+app.get('/v1/market-data/config', async () => getMarketDataConfig());
+
+app.get<{ Querystring: FuturesAggsQuery }>(
+  '/v1/market-data/futures/aggs',
+  {
+    schema: {
+      querystring: {
+        type: 'object',
+        required: ['ticker'],
+        additionalProperties: false,
+        properties: {
+          ticker: { type: 'string' },
+          resolution: { type: 'string' },
+          windowStart: { type: 'string' },
+          windowStartGte: { type: 'string' },
+          windowStartGt: { type: 'string' },
+          windowStartLte: { type: 'string' },
+          windowStartLt: { type: 'string' },
+          limit: { type: 'string' },
+          sort: { type: 'string' },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      return await listFuturesAggs({ ...req.query, limit });
+    } catch (err) {
+      return marketDataError(reply, err);
     }
   },
 );

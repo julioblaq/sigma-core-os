@@ -134,6 +134,22 @@ async function checkTradingSafety() {
   };
 }
 
+async function checkMarketDataConfig() {
+  const { response, body } = await request(`${config.apiUrl}/v1/market-data/config`);
+  assertCondition(response.ok, `market data config returned HTTP ${response.status}`, body);
+  assertCondition(body?.provider === 'massive', 'market data provider is not Massive', body);
+
+  const serialized = JSON.stringify(body);
+  assertCondition(!/"apiKey"\s*:/.test(serialized), 'market data config exposed an API key field', body);
+
+  return {
+    http: response.status,
+    provider: body.provider,
+    baseUrl: body.baseUrl,
+    apiKeySet: body.apiKeySet,
+  };
+}
+
 async function checkLLMConfig() {
   const { response, body } = await request(`${config.apiUrl}/v1/llm/config`);
   assertCondition(response.ok, `LLM config returned HTTP ${response.status}`, body);
@@ -253,6 +269,7 @@ await runCheck('sigma-api health', checkApiHealth);
 await runCheck('sigma-dashboard trading page', checkDashboardTrading);
 await runCheck('hermes-agent health', checkHermesHealth);
 await runCheck('trading safety config', checkTradingSafety);
+await runCheck('market data config', checkMarketDataConfig);
 await runCheck('LLM config', checkLLMConfig);
 await runCheck('Nova query contract', checkNovaQueryContract);
 

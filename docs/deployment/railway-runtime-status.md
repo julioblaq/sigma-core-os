@@ -63,6 +63,13 @@ Use Massive.com as the cloud-safe futures market data source after the 24 hour R
 /futures/v1/aggs/{ticker}
 ```
 
+Sigma exposes this through the cloud API without leaking the Massive key:
+
+```text
+GET /v1/market-data/config
+GET /v1/market-data/futures/aggs?ticker=ESU6&resolution=5min&windowStartGte=2026-09-01&windowStartLte=2026-09-02
+```
+
 Moomoo/OpenD remains local on the M1 for broker connectivity, local sessions, and trading-gateway behavior. It should not be used as the required CME futures data dependency for Sigma/Nova cloud features.
 
 ## Verified On 2026-06-07

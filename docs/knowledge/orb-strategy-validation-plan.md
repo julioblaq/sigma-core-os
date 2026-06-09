@@ -76,3 +76,12 @@ Use these when recording negative variants:
 ## Next Implementation Step
 
 Build the Massive futures data adapter first, then use it to power a deterministic ORB backtest runner. MooMoo/OpenD stays local and should not be the CME futures data dependency.
+
+Initial Sigma API adapter:
+
+```text
+GET /v1/market-data/config
+GET /v1/market-data/futures/aggs
+```
+
+The aggregate endpoint accepts `ticker`, `resolution`, `windowStart`, `windowStartGte`, `windowStartGt`, `windowStartLte`, `windowStartLt`, `limit`, and `sort`. It returns normalized OHLC bars from Massive futures data and never exposes `MASSIVE_API_KEY`.
