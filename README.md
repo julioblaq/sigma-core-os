@@ -243,6 +243,7 @@ Automatic failover: 429 → next provider. 5xx → next provider. Timeout → ne
 | GET | `/v1/memory` | Memory store |
 | GET | `/v1/market-data/config` | Safe market data provider config |
 | GET | `/v1/market-data/futures/aggs` | Massive futures OHLC aggregate bars |
+| POST | `/v1/backtests/orb-runner` | Research-only Massive-backed ORB backtest |
 | GET | `/v1/risk/contracts` | CME contract specs |
 | POST | `/v1/risk/position-size` | Position sizing |
 | POST | `/v1/risk/tp-sl` | TP/SL calculator |

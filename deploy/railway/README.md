@@ -171,6 +171,7 @@ Approved cloud action surface:
 GET  /v1/llm/config
 GET  /v1/market-data/config
 GET  /v1/market-data/futures/aggs?ticker=ESU6&resolution=5min&windowStartGte=2026-09-01&windowStartLte=2026-09-02
+POST /v1/backtests/orb-runner
 GET  /v1/hermes/config
 GET  /v1/hermes/status
 GET  /v1/hermes/models
