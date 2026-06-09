@@ -1,8 +1,8 @@
 # Railway Runtime Status
 
 Owner: Jerry Hicks Jr.
-Date: 2026-06-07
-Status: Cloud migration baseline is live.
+Date: 2026-06-09
+Status: 24 hour cloud stability watch passed.
 
 ## Cloud Runtime
 
@@ -41,9 +41,9 @@ Status: Cloud migration baseline is live.
 
 | Item | Status | Decision |
 |---|---:|---|
-| Railway `hermes-agent` active deployment | Healthy, active deployment is about 17 hours old as of 2026-06-07 11:11 EDT | Keep watching until the 24 hour window completes. |
+| Railway `hermes-agent` active deployment | Healthy after the 24 hour watch | Use Railway as the default Hermes bridge through Sigma approval gates. |
 | `HERMES_HOME` persistence | `HERMES_HOME=/opt/data`, no Railway volume attached | Acceptable for the current stateless approved chat bridge. Add a Railway volume before relying on long-term Hermes session memory or profile state. |
-| Local default LaunchAgent `ai.hermes.gateway` | Still running | Keep as rollback until the 24 hour Railway stability window completes. |
+| Local default LaunchAgent `ai.hermes.gateway` | Disabled and stopped on 2026-06-09 after the stability watch passed | Keep the plist available for manual rollback, but do not run it by default. |
 | Local trading LaunchAgent `ai.hermes.gateway-trading` | Still running | Keep local. Do not migrate while broker/OpenD/MFA/local-session needs remain possible. |
 
 ## Local Only
@@ -82,9 +82,20 @@ Moomoo/OpenD remains local on the M1 for broker connectivity, local sessions, an
 - `DB_PATH` is absent from `sigma-api` Railway variables.
 - `SIGMA_CONTROL_STORE=postgres` and `SIGMA_SANDBOX_PATH=/tmp/sigma-sandbox` are live on `sigma-api`.
 
+## Post-Soak Verification On 2026-06-09
+
+- GitHub Cloud Watch recorded 11 completed runs from 2026-06-07 16:49 UTC through 2026-06-08 23:38 UTC; all 11 succeeded.
+- Fresh `npm run cloud:watch` passed against live Railway.
+- Fresh `CLOUD_WATCH_WRITE_SMOKE=true npm run cloud:watch` passed, including Nova journal write and Nova voice draft approval cleanup.
+- `sigma-api` Hermes status returned `configured=true`, `ok=true`, and `platform=hermes-agent`.
+- `sigma-api` Hermes models returned `hermes-agent`.
+- Local default Hermes LaunchAgent `ai.hermes.gateway` was disabled and stopped.
+- Local trading Hermes LaunchAgent `ai.hermes.gateway-trading` remained running.
+- MooMoo remained running locally.
+
 ## Automated Cloud Watch
 
-GitHub Actions runs `.github/workflows/cloud-watch.yml` hourly at minute 17. The scheduled run checks:
+GitHub Actions runs `.github/workflows/cloud-watch.yml` on an hourly schedule at minute 17. GitHub may delay or skip scheduled starts, so treat this as a lightweight cloud watch rather than a precise uptime SLA. The scheduled run checks:
 
 - `sigma-api` health.
 - `sigma-dashboard` `/trading`.
