@@ -96,6 +96,36 @@ describe('getLLMConfig', () => {
       assert.ok('failureCount' in s);
     }
   });
+
+  it('routes the low-cost 24/7 model chain to DeepSeek direct and OpenRouter fallback', () => {
+    const saved = {
+      LLM_MODELS: process.env.LLM_MODELS,
+      LLM_API_KEY: process.env.LLM_API_KEY,
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    };
+    process.env.LLM_MODELS = 'deepseek-v4-flash,deepseek-v4-pro,minimax/minimax-m3';
+    delete process.env.LLM_API_KEY;
+    process.env.DEEPSEEK_API_KEY = 'sk-deepseek-test';
+    process.env.OPENROUTER_API_KEY = 'sk-openrouter-test';
+
+    try {
+      const cfg = getLLMConfig();
+      assert.equal(cfg.primaryModel, 'deepseek-v4-flash');
+      assert.deepEqual(cfg.chain.map(p => p.id), ['deepseek-v4-flash', 'deepseek-v4-pro', 'minimax/minimax-m3']);
+      assert.equal(cfg.chain[0].baseUrl, 'https://api.deepseek.com');
+      assert.equal(cfg.chain[1].baseUrl, 'https://api.deepseek.com');
+      assert.equal(cfg.chain[2].baseUrl, 'https://openrouter.ai/api/v1');
+      assert.equal(cfg.chain[0].apiKeySet, true);
+      assert.equal(cfg.chain[1].apiKeySet, true);
+      assert.equal(cfg.chain[2].apiKeySet, true);
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

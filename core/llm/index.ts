@@ -6,10 +6,12 @@
 // No provider SDKs in agents. No hardcoded model names in agents.
 //
 // Env vars:
-//   LLM_MODELS           Comma-separated ordered chain (default: gpt-5.5,claude-3,ollama)
-//   LLM_API_KEY          Shared API key for hosted providers
+//   LLM_MODELS           Comma-separated ordered chain (default: deepseek-v4-flash,deepseek-v4-pro,minimax/minimax-m3)
+//   LLM_API_KEY          Optional shared API key for hosted providers
 //   LLM_BASE_URL         Override base URL for primary provider
 //   LLM_TIMEOUT_MS       Per-provider request timeout ms (default: 30000)
+//   DEEPSEEK_API_KEY     Preferred key for DeepSeek direct models
+//   OPENROUTER_API_KEY   Preferred key for OpenRouter models such as minimax/minimax-m3
 //
 // Per-provider overrides (model id uppercased, non-alphanumeric stripped):
 //   LLM_GPT55_BASE_URL     LLM_GPT55_API_KEY     LLM_GPT55_TIMEOUT_MS
@@ -55,6 +57,7 @@ export interface ProviderConfig {
   model: string;
   apiKey: string;
   timeoutMs: number;
+  requiresKey: boolean;
 }
 
 export interface ProviderStatus {
@@ -97,12 +100,15 @@ interface ProviderDefaults {
 }
 
 const PROVIDER_DEFAULTS: Record<string, ProviderDefaults> = {
-  'gpt-5.5':    { baseUrl: 'https://api.openai.com/v1',    requiresKey: true  },
-  'gpt-4o':     { baseUrl: 'https://api.openai.com/v1',    requiresKey: true  },
-  'claude-3':   { baseUrl: 'https://api.anthropic.com/v1', requiresKey: true  },
-  'claude-3-5': { baseUrl: 'https://api.anthropic.com/v1', requiresKey: true  },
-  'ollama':     { baseUrl: 'http://localhost:11434/v1',     requiresKey: false },
-  'openclaw':   { baseUrl: 'http://localhost:11434/v1',     requiresKey: false },
+  'deepseek-v4-flash': { baseUrl: 'https://api.deepseek.com',      requiresKey: true  },
+  'deepseek-v4-pro':   { baseUrl: 'https://api.deepseek.com',      requiresKey: true  },
+  'gpt-5.5':           { baseUrl: 'https://api.openai.com/v1',     requiresKey: true  },
+  'gpt-4o':            { baseUrl: 'https://api.openai.com/v1',     requiresKey: true  },
+  'claude-3':          { baseUrl: 'https://api.anthropic.com/v1',  requiresKey: true  },
+  'claude-3-5':        { baseUrl: 'https://api.anthropic.com/v1',  requiresKey: true  },
+  'minimax/minimax-m3': { baseUrl: 'https://openrouter.ai/api/v1', requiresKey: true  },
+  'ollama':            { baseUrl: 'http://localhost:11434/v1',     requiresKey: false },
+  'openclaw':          { baseUrl: 'http://localhost:11434/v1',     requiresKey: false },
 };
 
 // gpt-5.5 -> GPT55, claude-3 -> CLAUDE3
@@ -110,16 +116,38 @@ function modelToEnvKey(modelId: string): string {
   return modelId.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
+function defaultProvider(modelId: string): ProviderDefaults {
+  if (PROVIDER_DEFAULTS[modelId]) return PROVIDER_DEFAULTS[modelId];
+  if (modelId.includes('/')) {
+    return { baseUrl: 'https://openrouter.ai/api/v1', requiresKey: true };
+  }
+  return { baseUrl: 'https://api.openai.com/v1', requiresKey: true };
+}
+
 function deriveProvider(baseUrl: string): string {
   if (baseUrl.includes('openai.com'))    return 'openai';
   if (baseUrl.includes('anthropic.com')) return 'anthropic';
+  if (baseUrl.includes('deepseek.com'))  return 'deepseek';
+  if (baseUrl.includes('openrouter.ai')) return 'openrouter';
   if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1')) return 'local';
   return 'litellm';
 }
 
+function providerKey(baseUrl: string): string {
+  if (baseUrl.includes('deepseek.com')) return process.env.DEEPSEEK_API_KEY ?? '';
+  if (baseUrl.includes('openrouter.ai')) return process.env.OPENROUTER_API_KEY ?? '';
+  if (baseUrl.includes('openai.com')) return process.env.OPENAI_API_KEY ?? '';
+  if (baseUrl.includes('anthropic.com')) return process.env.ANTHROPIC_API_KEY ?? '';
+  return '';
+}
+
+function firstKey(...values: Array<string | undefined>): string {
+  return values.find(value => value !== undefined && value.length > 0) ?? '';
+}
+
 function buildProviderConfig(modelId: string, isPrimary: boolean): ProviderConfig {
   const envKey  = modelToEnvKey(modelId);
-  const defs    = PROVIDER_DEFAULTS[modelId] ?? { baseUrl: 'https://api.openai.com/v1', requiresKey: true };
+  const defs    = defaultProvider(modelId);
 
   // Base URL: per-model override > global override (primary only) > provider default
   const baseUrl = (
@@ -128,10 +156,12 @@ function buildProviderConfig(modelId: string, isPrimary: boolean): ProviderConfi
     defs.baseUrl
   ).replace(/\/$/, '');
 
-  const apiKey =
+  const apiKey = firstKey(
     process.env[`LLM_${envKey}_API_KEY`] ??
-    process.env.LLM_API_KEY ??
-    '';
+      undefined,
+    providerKey(baseUrl),
+    process.env.LLM_API_KEY,
+  );
 
   const timeoutMs = parseInt(
     process.env[`LLM_${envKey}_TIMEOUT_MS`] ??
@@ -140,11 +170,11 @@ function buildProviderConfig(modelId: string, isPrimary: boolean): ProviderConfi
     10,
   );
 
-  return { id: modelId, baseUrl, model: modelId, apiKey, timeoutMs };
+  return { id: modelId, baseUrl, model: modelId, apiKey, timeoutMs, requiresKey: defs.requiresKey };
 }
 
 function readChain(): ProviderConfig[] {
-  const models = (process.env.LLM_MODELS ?? 'gpt-5.5,claude-3,ollama')
+  const models = (process.env.LLM_MODELS ?? 'deepseek-v4-flash,deepseek-v4-pro,minimax/minimax-m3')
     .split(',')
     .map(m => m.trim())
     .filter(Boolean);
@@ -279,8 +309,7 @@ async function callProvider(
   recordSuccess(cfg);
 
   console.log(
-    `[llm] ok provider=${cfg.id} model=${json.model ?? cfg.model} " +
-    "type=${provider} tokens=${usage.totalTokens} latency=${latencyMs}ms`,
+    `[llm] ok provider=${cfg.id} model=${json.model ?? cfg.model} type=${provider} tokens=${usage.totalTokens} latency=${latencyMs}ms`,
   );
 
   return { content, model: json.model ?? cfg.model, provider, usage, latencyMs, providerIndex };
@@ -313,8 +342,7 @@ async function routeRequest(req: LLMRequest): Promise<LLMResponse> {
       if (isFailover && hasNext) {
         const backoffMs = 200 * (i + 1);
         console.warn(
-          `[llm] provider ${cfg.id} failed status=${status || 'timeout'} " +
-          "-> failover to ${chain[i + 1].id} after ${backoffMs}ms`,
+          `[llm] provider ${cfg.id} failed status=${status || 'timeout'} -> failover to ${chain[i + 1].id} after ${backoffMs}ms`,
         );
         await sleep(backoffMs);
         continue;
@@ -344,8 +372,7 @@ export async function generateResponse(req: LLMRequest): Promise<LLMResponse> {
   // Require at least one provider in chain with a key (or key-free local provider)
   const chain = readChain();
   const hasUsableProvider = chain.some(cfg => {
-    const defs = PROVIDER_DEFAULTS[cfg.id];
-    if (!defs || !defs.requiresKey) return true; // local providers always usable
+    if (!cfg.requiresKey) return true; // local providers always usable
     return cfg.apiKey.length > 0;
   });
 
