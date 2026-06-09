@@ -52,6 +52,7 @@
 // POST /v1/hermes/dispatch-chat
 // GET  /v1/market-data/config
 // GET  /v1/market-data/futures/aggs
+// POST /v1/backtests/orb-runner
 // GET  /health
 //
 // v0.8.0: real auth via core/auth — session cookies, replace x-user-id stub
@@ -179,6 +180,10 @@ import {
   MarketDataConfigError,
   MarketDataProviderError,
 } from '../../core/market-data/index.js';
+import {
+  runSigmaOrbBacktest,
+  type OrbBacktestSettings,
+} from '../../core/backtest/orb-runner.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -196,6 +201,15 @@ type FuturesAggsQuery = {
   windowStartLt?: string;
   limit?: string;
   sort?: string;
+};
+
+type OrbRunnerBacktestBody = {
+  ticker: string;
+  windowStartGte: string;
+  windowStartLte: string;
+  resolution?: string;
+  limit?: number;
+  settings?: OrbBacktestSettings;
 };
 
 app.addHook('onRequest', async (req, reply) => {
@@ -898,6 +912,78 @@ app.get<{ Querystring: FuturesAggsQuery }>(
     try {
       const limit = req.query.limit ? Number(req.query.limit) : undefined;
       return await listFuturesAggs({ ...req.query, limit });
+    } catch (err) {
+      return marketDataError(reply, err);
+    }
+  },
+);
+
+app.post<{ Body: OrbRunnerBacktestBody }>(
+  '/v1/backtests/orb-runner',
+  {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['ticker', 'windowStartGte', 'windowStartLte'],
+        additionalProperties: false,
+        properties: {
+          ticker: { type: 'string' },
+          windowStartGte: { type: 'string' },
+          windowStartLte: { type: 'string' },
+          resolution: { type: 'string' },
+          limit: { type: 'number' },
+          settings: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              orbStartTime: { type: 'string' },
+              orbMinutes: { type: 'number' },
+              eodExitTime: { type: 'string' },
+              rewardRisk: { type: 'number' },
+              adaptiveLookback: { type: 'number' },
+              adaptiveRangeMultiplier: { type: 'number' },
+              abnormalRangeMinRatio: { type: 'number' },
+              abnormalRangeMaxRatio: { type: 'number' },
+              allowedWeekdays: {
+                anyOf: [
+                  { type: 'string', enum: ['all'] },
+                  { type: 'array', items: { type: 'string', enum: ['MON', 'TUE', 'WED', 'THU', 'FRI'] } },
+                ],
+              },
+              skipMonthCodes: { type: 'array', items: { type: 'string' } },
+              contracts: { type: 'number' },
+              commissionPerContract: { type: 'number' },
+              slippageTicks: { type: 'number' },
+            },
+          },
+        },
+      },
+    },
+  },
+  async (req, reply) => {
+    try {
+      const bars = await listFuturesAggs({
+        ticker: req.body.ticker,
+        resolution: req.body.resolution ?? '5min',
+        windowStartGte: req.body.windowStartGte,
+        windowStartLte: req.body.windowStartLte,
+        limit: req.body.limit ?? 50000,
+        sort: 'window_start.asc',
+      });
+      const result = runSigmaOrbBacktest(req.body.ticker, bars.bars, req.body.settings ?? {});
+      return {
+        source: {
+          provider: bars.provider,
+          ticker: bars.ticker,
+          resolution: bars.resolution,
+          count: bars.count,
+          bars: bars.bars.length,
+          status: bars.status,
+          nextUrl: bars.nextUrl,
+          latencyMs: bars.latencyMs,
+        },
+        result,
+      };
     } catch (err) {
       return marketDataError(reply, err);
     }
