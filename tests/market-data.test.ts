@@ -51,7 +51,7 @@ describe('market data config', () => {
 });
 
 describe('listFuturesAggs', () => {
-  it('calls the Massive futures aggregates endpoint with bearer auth', async () => {
+  it('calls the Massive futures aggregates endpoint with query-string auth', async () => {
     let capturedUrl = '';
     let capturedHeaders: HeadersInit | undefined;
 
@@ -97,7 +97,8 @@ describe('listFuturesAggs', () => {
     assert.equal(url.searchParams.get('window_start.lte'), '2026-09-02');
     assert.equal(url.searchParams.get('limit'), '500');
     assert.equal(url.searchParams.get('sort'), 'window_start.asc');
-    assert.equal((capturedHeaders as Record<string, string>).Authorization, 'Bearer massive-test-key');
+    assert.equal(url.searchParams.get('apiKey'), 'massive-test-key');
+    assert.equal((capturedHeaders as Record<string, string>).Authorization, undefined);
 
     assert.equal(result.provider, 'massive');
     assert.equal(result.ticker, 'ESU6');

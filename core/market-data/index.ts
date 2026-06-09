@@ -224,16 +224,14 @@ export async function listFuturesAggs(req: FuturesAggsRequest): Promise<FuturesA
   appendOptional(params, 'window_start.gt', req.windowStartGt);
   appendOptional(params, 'window_start.lte', req.windowStartLte);
   appendOptional(params, 'window_start.lt', req.windowStartLt);
+  params.set('apiKey', cfg.apiKey);
 
   const url = `${cfg.baseUrl}/futures/v1/aggs/${encodeURIComponent(ticker)}?${params.toString()}`;
   const { response, latencyMs } = await fetchWithTimeout(
     url,
     {
       method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${cfg.apiKey}`,
-      },
+      headers: { Accept: 'application/json' },
     },
     cfg.timeoutMs,
   );
