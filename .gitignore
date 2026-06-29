@@ -3,5 +3,7 @@ apps/dashboard/node_modules/
 node_modules/
 .next/
 *.sqlite
+sigma.db
+*.db
 .env
 .DS_Store
