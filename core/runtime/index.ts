@@ -209,11 +209,11 @@ export async function executeTrade(approval: Approval): Promise<TradeResult> {
 
   // Extract signal from approval payload
   const payload = approval.payload as Record<string, unknown>;
-  const signal = (payload.signal ?? payload) as Record<string, unknown>;
+  const signal = (payload.signal ?? payload.plan ?? payload) as Record<string, unknown>;
 
   const symbol = (signal.symbol ?? payload.symbol) as string | undefined;
   const side = (signal.direction ?? signal.side ?? payload.side) as string | undefined;
-  const quantity = (signal.quantity ?? payload.quantity) as number | undefined;
+  const quantity = (signal.quantity ?? signal.contracts ?? payload.quantity) as number | undefined;
   const entry = (signal.entry ?? payload.entry) as number | undefined;
   const stop = (signal.stop ?? payload.stop) as number | undefined;
   const target = (signal.target ?? payload.target) as number | undefined;

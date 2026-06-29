@@ -79,6 +79,7 @@ import {
   RiskError,
   type TradePlanInput,
 } from '../../core/risk/index.js';
+import { executeTrade } from '../../core/runtime/index.js';
 import {
   createWorkspace,
   getWorkspace,
@@ -406,7 +407,10 @@ app.post<{
     const updated = await resolveApproval(req.params.id, approved, resolvedBy, reason);
     if (!updated) return reply.code(404).send({ error: 'approval not found or already resolved' });
     const outcome = await logOutcome(updated, updated.action);
-    return reply.code(200).send({ approval: updated, outcome });
+    const tradeExecution = approved && updated.action === 'trade_plan'
+      ? await executeTrade(updated)
+      : undefined;
+    return reply.code(200).send({ approval: updated, outcome, tradeExecution });
   },
 );
 

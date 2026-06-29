@@ -260,6 +260,36 @@ describe('executeTrade - runtime flow', () => {
     }
   });
 
+  it('approved risk-engine plan payload submits paper order', async () => {
+    const pending = requestApproval('sigma-risk', 'trade_plan', 'Risk plan: LONG 5x MNQ @ 19000', {
+      taskId: randomUUID(),
+      plan: {
+        symbol: 'MNQ',
+        side: 'long',
+        entry: 19000,
+        stop: 18990,
+        target: 19020,
+        contracts: 5,
+      },
+      executionMode: 'approval_only',
+    });
+    const resolved = resolveApproval(pending.id, true, 'julio');
+    assert.ok(resolved);
+
+    const result = await executeTrade(resolved);
+    assert.equal(result.outcome, 'submitted');
+    if (result.outcome === 'submitted') {
+      assert.equal(result.orderResult.symbol, 'MNQ');
+      assert.equal(result.orderResult.side, 'long');
+      assert.equal(result.orderResult.quantity, 5);
+      assert.equal(result.orderResult.entry, 19000);
+      assert.equal(result.orderResult.stop, 18990);
+      assert.equal(result.orderResult.target, 19020);
+      assert.equal(result.orderResult.mode, 'paper');
+      assert.equal(result.orderResult.brokerAdapter, 'paper');
+    }
+  });
+
   it('denied approval submits nothing', async () => {
     const pending  = makeTradeApproval('NQ', 'short', 1, 18000, 18050, 17900);
     const resolved = resolveApproval(pending.id, false, 'julio', 'market closed');
