@@ -185,7 +185,7 @@ import {
   runSigmaOrbBacktest,
   type OrbBacktestSettings,
 } from '../../core/backtest/orb-runner.js';
-import { addSigmaDailyFeedback, applySigmaDailyReview, createSigmaDailyIssue, getSigmaDailyIssue, listSigmaDailyIssues } from '../../core/daily/issues.js';
+import { addSigmaDailyFeedback, applySigmaDailyReview, createSigmaDailyIssue, getSigmaDailyIssue, listSigmaDailyIssues, reviseSigmaDailyIssue } from '../../core/daily/issues.js';
 import { notifySigmaDailyDraft } from '../../core/daily/telegram.js';
 
 const app = Fastify({ logger: true });
@@ -1724,6 +1724,10 @@ app.post<{ Body: { watchlist?: string | string[]; requestedBy?: string } }>('/v1
 app.post<{ Params: { id: string }; Body: { message?: string; author?: string } }>('/v1/daily/issues/:id/feedback', async (req, reply) => {
   const issue = await addSigmaDailyFeedback(req.params.id, req.body?.message ?? '', req.body?.author ?? 'telegram');
   return issue ?? reply.code(400).send({ error: 'Feedback requires a valid issue and message' });
+});
+app.post<{ Params: { id: string } }>('/v1/daily/issues/:id/revise', async (req, reply) => {
+  try { const issue = await reviseSigmaDailyIssue(req.params.id); return issue ?? reply.code(404).send({ error: 'Sigma Daily issue not found' }); }
+  catch (err) { return reply.code(400).send({ error: err instanceof Error ? err.message : 'Could not revise Sigma Daily issue' }); }
 });
 
 // -- Legacy CeeCeeBot compatibility route
