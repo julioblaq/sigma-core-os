@@ -185,6 +185,8 @@ import {
   runSigmaOrbBacktest,
   type OrbBacktestSettings,
 } from '../../core/backtest/orb-runner.js';
+import { addSigmaDailyFeedback, applySigmaDailyReview, createSigmaDailyIssue, getSigmaDailyIssue, listSigmaDailyIssues } from '../../core/daily/issues.js';
+import { notifySigmaDailyDraft } from '../../core/daily/telegram.js';
 
 const app = Fastify({ logger: true });
 const PORT = Number(process.env.PORT ?? 3001);
@@ -407,10 +409,11 @@ app.post<{
     const updated = await resolveApproval(req.params.id, approved, resolvedBy, reason);
     if (!updated) return reply.code(404).send({ error: 'approval not found or already resolved' });
     const outcome = await logOutcome(updated, updated.action);
+    const dailyIssue = updated.action === 'sigma_daily_issue_review' ? await applySigmaDailyReview(updated.id, approved) : undefined;
     const tradeExecution = approved && updated.action === 'trade_plan'
       ? await executeTrade(updated)
       : undefined;
-    return reply.code(200).send({ approval: updated, outcome, tradeExecution });
+    return reply.code(200).send({ approval: updated, outcome, tradeExecution, dailyIssue });
   },
 );
 
@@ -1706,6 +1709,22 @@ app.get<{ Params: { id: string }; Querystring: PerfQuery }>(
     return await getBreakdown(perfFilter(req.params.id, req.query));
   },
 );
+
+// Sigma Daily review workflow. It is intentionally separate from trading routes.
+app.get('/v1/daily/issues', async () => listSigmaDailyIssues());
+app.get<{ Params: { id: string } }>('/v1/daily/issues/:id', async (req, reply) => (await getSigmaDailyIssue(req.params.id)) ?? reply.code(404).send({ error: 'Sigma Daily issue not found' }));
+app.post<{ Body: { watchlist?: string | string[]; requestedBy?: string } }>('/v1/daily/issues', async (req, reply) => {
+  try {
+    const issue = await createSigmaDailyIssue(req.body ?? {});
+    return reply.code(201).send({ ...issue, telegram: await notifySigmaDailyDraft(issue) });
+  } catch (err) {
+    return reply.code(502).send({ error: err instanceof Error ? err.message : 'Could not create Sigma Daily issue' });
+  }
+});
+app.post<{ Params: { id: string }; Body: { message?: string; author?: string } }>('/v1/daily/issues/:id/feedback', async (req, reply) => {
+  const issue = await addSigmaDailyFeedback(req.params.id, req.body?.message ?? '', req.body?.author ?? 'telegram');
+  return issue ?? reply.code(400).send({ error: 'Feedback requires a valid issue and message' });
+});
 
 // -- Legacy CeeCeeBot compatibility route
 app.get('/ceecee/status', async () => ({
