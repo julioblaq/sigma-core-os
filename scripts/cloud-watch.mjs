@@ -156,10 +156,13 @@ async function checkLLMConfig() {
 
   const chain = body?.config?.chain;
   assertCondition(Array.isArray(chain), 'LLM config did not return a chain', body);
-  assertCondition(body?.config?.primaryModel === 'deepseek-v4-flash', 'LLM primary model is not DeepSeek flash', body);
-  assertCondition(chain[0]?.baseUrl === 'https://api.deepseek.com', 'LLM primary is not routed to DeepSeek direct', body);
+  assertCondition(body?.config?.primaryModel === 'gpt-5.6', 'LLM primary model is not GPT-5.6', body);
+  assertCondition(chain[0]?.id === 'gpt-5.6', 'LLM primary is not GPT-5.6', body);
+  assertCondition(chain[0]?.baseUrl === 'https://api.openai.com/v1', 'LLM primary is not routed to OpenAI direct', body);
+  assertCondition(chain[1]?.id === 'deepseek-v4-flash', 'LLM secondary is not DeepSeek Flash', body);
   assertCondition(chain[1]?.baseUrl === 'https://api.deepseek.com', 'LLM secondary is not routed to DeepSeek direct', body);
-  assertCondition(chain[2]?.baseUrl === 'https://openrouter.ai/api/v1', 'LLM fallback is not routed to OpenRouter', body);
+  assertCondition(chain[2]?.id === 'deepseek-v4-pro', 'LLM fallback is not DeepSeek Pro', body);
+  assertCondition(chain[2]?.baseUrl === 'https://api.deepseek.com', 'LLM fallback is not routed to DeepSeek direct', body);
   assertCondition(chain.every(provider => provider.apiKeySet === true), 'LLM chain has an unset API key', body);
 
   const serialized = JSON.stringify(body);
